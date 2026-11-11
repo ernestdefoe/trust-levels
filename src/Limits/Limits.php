@@ -17,6 +17,7 @@ use Flarum\User\User;
 
 /**
  * The per-level limits, checked on the server where they can't be skipped.
+ * Private messages (flarum/messages) get the same content limits as posts.
  *
  * Links, images and mentions are counted in the parsed post (the formatter's
  * XML), so Markdown, BBCode, autolinks and uploads all count the same way, and
@@ -59,15 +60,7 @@ class Limits
             return;
         }
 
-        $counts = self::count((string) $post->parsed_content);
-
-        foreach (['links', 'images', 'mentions'] as $limit) {
-            $max = $this->config->limit($limit, $level);
-
-            if ($max !== null && $counts[$limit] > $max) {
-                $this->fail($limit, $level, $max, $counts[$limit] - $max);
-            }
-        }
+        $this->checkContent((string) $post->parsed_content, $level);
     }
 
     public function discussionSaving(DiscussionSaving $event): void
@@ -109,6 +102,22 @@ class Limits
 
         if ($max !== null && $message::query()->where('user_id', $actor->id)->where('created_at', '>=', Carbon::now()->subDay())->count() >= $max) {
             $this->fail('messages_day', $level, $max);
+        }
+
+        // Links, images and mentions: the same limits as posts (the content is parsed by now).
+        $this->checkContent((string) $message->parsed_content, $level);
+    }
+
+    private function checkContent(string $xml, int $level): void
+    {
+        $counts = self::count($xml);
+
+        foreach (['links', 'images', 'mentions'] as $limit) {
+            $max = $this->config->limit($limit, $level);
+
+            if ($max !== null && $counts[$limit] > $max) {
+                $this->fail($limit, $level, $max, $counts[$limit] - $max);
+            }
         }
     }
 

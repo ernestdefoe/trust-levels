@@ -103,6 +103,15 @@ class PoliciesTest extends TestCase
         Carbon::setTestNow();
     }
 
+    #[Test]
+    public function a_private_message_has_the_same_link_limit_as_a_post(): void
+    {
+        $links = 'http://a.example http://b.example http://c.example http://d.example http://e.example http://f.example';
+        $status = $this->send_('POST', '/api/dialog-messages', 4, ['data' => ['type' => 'dialog-messages', 'attributes' => ['content' => $links, 'users' => [['id' => 5]]]]]);
+
+        $this->assertSame(422, $status, 'Basic: 5 links');
+    }
+
     /** flarum/messages serializes canSendAnyMessage on EVERY user: it must not tell who is New or on hold. */
     #[Test]
     public function other_members_cant_tell_who_is_new_or_on_hold(): void
