@@ -216,6 +216,28 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function the_last_100_days_count_what_flarum_already_recorded(): void
+    {
+        $db = $this->db();
+        $rows = [];
+
+        for ($d = 1; $d <= 12; $d++) {
+            $rows[] = ['id' => 100 + $d, 'discussion_id' => 1, 'number' => 100 + $d, 'user_id' => 4, 'type' => 'comment', 'created_at' => Carbon::now()->subDays($d), 'content' => '<t><p>x</p></t>'];
+        }
+
+        $db->table('posts')->insert($rows);
+        $db->table('discussion_user')->insert(['user_id' => 4, 'discussion_id' => 1, 'last_read_post_number' => 40, 'last_read_at' => Carbon::now()->subDays(3)]);
+        $db->table('users')->where('id', 4)->update(['last_seen_at' => Carbon::now()]);
+
+        $this->check();
+
+        $stats = json_decode($db->table('trust_stats')->where('user_id', 4)->value('data'), true)['stats'];
+        $this->assertSame(13, $stats['days_visited_w'], '12 days posting, plus the fixture posts 30 days ago');
+        $this->assertSame(1, $stats['topics_entered_w']);
+        $this->assertSame(40, $stats['posts_read_w']);
+    }
+
+    #[Test]
     public function a_quiet_regular_drops_after_the_grace_period_but_a_locked_one_never_moves(): void
     {
         $this->db()->table('users')->where('id', 10)->update(['last_seen_at' => Carbon::now()]);

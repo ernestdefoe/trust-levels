@@ -96,6 +96,8 @@ class Stats
             unset($o);
         }
 
+        $this->windowFromHistory($ids, $since, $out);
+
         // Discussions replied in: comments that aren't the first post.
         $disc = $w('posts.discussion_id');
         $rows = $this->visibleComments()
@@ -127,6 +129,51 @@ class Stats
         }
 
         return $out;
+    }
+
+    /**
+     * The 100-day window from what Flarum already records, for the days before
+     * the extension tracked them: discussions read recently (core's read marks
+     * carry a date) and days the member posted or liked. Whichever is higher
+     * counts, so a forum's regulars can be Regulars from the first check.
+     */
+    private function windowFromHistory(array $ids, Carbon $since, array &$out): void
+    {
+        $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
+
+        foreach ($this->db->table('discussion_user')
+            ->whereIn('user_id', $ids)
+            ->where('last_read_at', '>=', $since)
+            ->where('last_read_post_number', '>', 0)
+            ->groupBy('user_id')
+            ->select('user_id')
+            ->selectRaw('count(*) as topics, sum('.$w('discussion_user.last_read_post_number').') as posts')
+            ->get() as $row) {
+            $o = &$out[(int) $row->user_id];
+            $o['topics_entered_w'] = max($o['topics_entered_w'], (int) $row->topics);
+            $o['posts_read_w'] = max($o['posts_read_w'], (int) $row->posts);
+            unset($o);
+        }
+
+        $days = $this->db->table('posts')
+            ->whereIn('user_id', $ids)
+            ->where('created_at', '>=', $since)
+            ->select('user_id')
+            ->selectRaw('date('.$w('posts.created_at').') as d');
+
+        if ($this->likesOn()) {
+            $days->union(
+                $this->db->table('post_likes')
+                    ->whereIn('user_id', $ids)
+                    ->where('created_at', '>=', $since)
+                    ->select('user_id')
+                    ->selectRaw('date('.$w('post_likes.created_at').') as d')
+            );
+        }
+
+        foreach ($this->db->query()->fromSub($days, 'days')->groupBy('user_id')->select('user_id')->selectRaw('count(distinct d) as n')->get() as $row) {
+            $out[(int) $row->user_id]['days_visited_w'] = max($out[(int) $row->user_id]['days_visited_w'], (int) $row->n);
+        }
     }
 
     private function likes(array $ids, Carbon $since, array &$out): void
