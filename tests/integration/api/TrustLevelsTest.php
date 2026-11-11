@@ -446,6 +446,15 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function locking_a_member_who_isnt_placed_yet_places_them(): void
+    {
+        $this->db()->table('users')->where('id', 2)->update(['trust_level_at' => null]);
+
+        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/2', 5, ['locked' => true])[0]);
+        $this->assertNotNull($this->user(2)->trust_level_at);
+    }
+
+    #[Test]
     public function a_moderator_cant_raise_themselves_or_anyone_to_leader(): void
     {
         $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/5', 5, ['level' => 4])[0], 'own account');

@@ -2,6 +2,7 @@
 
 namespace ErnestDefoe\TrustLevels\Api;
 
+use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\LevelWriter;
 use ErnestDefoe\TrustLevels\Spam\Spam;
@@ -102,7 +103,10 @@ class MemberController implements RequestHandlerInterface
 
         if (array_key_exists('locked', $body) && (bool) $body['locked'] !== (bool) $user->getAttribute('trust_locked')) {
             $locked = (bool) $body['locked'];
+            // A lock is a placement too: a member locked before their first check
+            // would otherwise be picked up as unplaced by every run.
             $this->db->table('users')->where('id', $user->id)->update(['trust_locked' => $locked]);
+            $this->db->table('users')->where('id', $user->id)->whereNull('trust_level_at')->update(['trust_level_at' => Carbon::now()]);
             $this->writer->log($user->id, $locked ? 'locked' : 'unlocked', null, (int) $user->getAttribute('trust_level'), $actor->id);
         }
 
