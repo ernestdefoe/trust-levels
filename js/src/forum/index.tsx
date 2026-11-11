@@ -86,6 +86,19 @@ app.initializers.add('ernestdefoe/trust-levels', () => {
     );
   });
 
+  // The editor writes through a plain DOM listener, so typing doesn't redraw: redraw only when a count changes.
+  extend('flarum/common/components/TextEditor', 'oninput', function (this: any) {
+    if (!app.session.user?.attribute('trustLimits')) return;
+
+    const counts = countLinks(String(this.value || ''));
+    const key = counts.links + ':' + counts.images;
+
+    if (key !== this.trustCounts) {
+      this.trustCounts = key;
+      m.redraw();
+    }
+  });
+
   // The composer: "3 of 2 links" as they type, once they're near a limit.
   extend('flarum/common/components/TextEditor', 'controlItems', function (this: any, items: ItemList<Mithril.Children>) {
     const limits = app.session.user?.attribute<{ links: number | null; images: number | null } | null>('trustLimits');
