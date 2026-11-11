@@ -34,7 +34,7 @@ class TrustPolicy extends AbstractPolicy
         }
 
         $silenced = Exempt::silenced($actor);
-        $level = Exempt::level($actor);
+        $level = $this->exempt->level($actor);
 
         $relevant = $silenced
             ? in_array($ability, self::SILENCED, true)

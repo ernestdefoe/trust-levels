@@ -2,7 +2,9 @@
 
 namespace ErnestDefoe\TrustLevels\Access;
 
+use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 
 /**
@@ -12,7 +14,7 @@ use Flarum\User\User;
  */
 class Exempt
 {
-    public function __construct(private Config $config)
+    public function __construct(private Config $config, private SettingsRepositoryInterface $settings)
     {
     }
 
@@ -31,9 +33,25 @@ class Exempt
         return $groups && $actor->groups->whereIn('id', $groups)->isNotEmpty();
     }
 
-    public static function level(User $actor): int
+    /**
+     * The level limits and policies go by. A member who was here before the
+     * install and hasn't been placed yet (the first check hasn't reached them)
+     * counts as Basic, so enabling the extension never puts the whole forum
+     * under New-member limits for an hour.
+     */
+    public function level(User $actor): int
     {
-        return (int) $actor->getAttribute('trust_level');
+        $level = (int) $actor->getAttribute('trust_level');
+
+        if ($level === 0 && ! $actor->getAttribute('trust_level_at') && $actor->exists) {
+            $installed = $this->settings->get(Config::INSTALLED);
+
+            if (! $installed || ! $actor->joined_at || $actor->joined_at->lt(Carbon::parse($installed))) {
+                return 1;
+            }
+        }
+
+        return $level;
     }
 
     public static function silenced(User $actor): bool

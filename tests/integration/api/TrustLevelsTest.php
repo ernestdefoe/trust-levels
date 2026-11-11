@@ -264,6 +264,15 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function members_from_before_the_install_arent_held_to_new_limits_before_their_first_check(): void
+    {
+        $this->db()->table('users')->where('id', 2)->update(['trust_level_at' => null, 'trust_level' => 0, 'joined_at' => Carbon::now()->subYear()]);
+
+        [$status] = $this->reply(2, 'http://a.example http://b.example http://c.example');
+        $this->assertSame(201, $status);
+    }
+
+    #[Test]
     public function new_members_may_start_three_discussions_a_day(): void
     {
         $this->setConfig(['limits' => ['post_seconds' => []]]);

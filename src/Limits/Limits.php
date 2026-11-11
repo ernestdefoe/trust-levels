@@ -45,7 +45,7 @@ class Limits
             return;
         }
 
-        $level = Exempt::level($actor);
+        $level = $this->exempt->level($actor);
 
         if (! $post->exists && ($seconds = $this->config->limit('post_seconds', $level))) {
             $last = Post::query()->where('user_id', $actor->id)->where('type', 'comment')->max('created_at');
@@ -78,7 +78,7 @@ class Limits
             return;
         }
 
-        $level = Exempt::level($actor);
+        $level = $this->exempt->level($actor);
         $max = $this->config->limit('discussions_day', $level);
 
         if ($max !== null && Discussion::query()->where('user_id', $actor->id)->where('created_at', '>=', Carbon::now()->subDay())->count() >= $max) {
@@ -96,7 +96,7 @@ class Limits
             return;
         }
 
-        $level = Exempt::level($actor);
+        $level = $this->exempt->level($actor);
         $max = $this->config->limit('messages_day', $level);
 
         if ($max !== null && $message::query()->where('user_id', $actor->id)->where('created_at', '>=', Carbon::now()->subDay())->count() >= $max) {

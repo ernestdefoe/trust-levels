@@ -124,7 +124,7 @@ class Spam
     public function silenceFor(User $author, Post $post): void
     {
         if ($author->getAttribute('trust_silenced_at') || $this->exempt->is($author)
-            || Exempt::level($author) > $this->config->spam('silence_up_to')) {
+            || $this->exempt->level($author) > $this->config->spam('silence_up_to')) {
             return;
         }
 
@@ -164,7 +164,7 @@ class Spam
         $this->writer->log($author->id, 'flag_upheld', null, null, $actor?->id, $post->id, ['flaggers' => $flaggers]);
 
         $drop = $this->config->spam('drop_flags');
-        $level = Exempt::level($author);
+        $level = $this->exempt->level($author);
 
         if ($drop <= 0 || $level === 0 || $author->getAttribute('trust_locked')) {
             return;

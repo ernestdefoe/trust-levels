@@ -90,10 +90,15 @@ return [
             // The composer's live link/image counter: the member's own limits.
             Schema\Arr::make('trustLimits')
                 ->visible(fn (User $user, Context $context) => $context->getActor()->id === $user->id)
-                ->get(fn (User $user) => resolve(\ErnestDefoe\TrustLevels\Access\Exempt::class)->is($user) ? null : [
-                    'links' => resolve(\ErnestDefoe\TrustLevels\Config::class)->limit('links', (int) $user->getAttribute('trust_level')),
-                    'images' => resolve(\ErnestDefoe\TrustLevels\Config::class)->limit('images', (int) $user->getAttribute('trust_level')),
-                ]),
+                ->get(function (User $user) {
+                    $exempt = resolve(\ErnestDefoe\TrustLevels\Access\Exempt::class);
+                    $config = resolve(\ErnestDefoe\TrustLevels\Config::class);
+
+                    return $exempt->is($user) ? null : [
+                        'links' => $config->limit('links', $exempt->level($user)),
+                        'images' => $config->limit('images', $exempt->level($user)),
+                    ];
+                }),
         ]),
 
     (new Extend\ApiResource(ForumResource::class))
