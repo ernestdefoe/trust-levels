@@ -17,7 +17,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * GET  /api/trust-levels/users/{id}: the progress tab. The member themselves
  *      or staff with the manage permission; anyone else gets a 404, so it
  *      can't be used to learn someone's level.
- * POST /api/trust-levels/users/{id} {level?, locked?, note?, silenced?}: staff only.
+ * POST /api/trust-levels/users/{id} {level?, locked?, note?, silenced?}: staff only, never
+ *      on their own account; Leader and raises that grant a level group's permissions
+ *      need an admin.
  */
 class MemberController implements RequestHandlerInterface
 {
@@ -26,6 +28,7 @@ class MemberController implements RequestHandlerInterface
         private LevelWriter $writer,
         private Spam $spam,
         private ConnectionInterface $db,
+        private Config $config,
     ) {
     }
 
@@ -42,8 +45,14 @@ class MemberController implements RequestHandlerInterface
         }
 
         if ($request->getMethod() === 'POST') {
-            if (! $staff) {
+            // Nobody changes their own level, lock or hold: a moderator could
+            // otherwise make themselves Leader and take its permissions.
+            if (! $staff || $actor->id === $user->id) {
                 return Json::error(403, 'permission_denied');
+            }
+
+            if (! $actor->isAdmin() && $this->grantsWhatOnlyAdminsMay($user, Json::body($request))) {
+                return Json::error(403, 'admin_only');
             }
 
             $this->update($user, $actor, Json::body($request));
@@ -51,6 +60,32 @@ class MemberController implements RequestHandlerInterface
         }
 
         return new JsonResponse(['data' => $this->progress->for($user, $staff)]);
+    }
+
+    /**
+     * Leader, and any raise that hands over a level group's permissions, are
+     * an admin's call. Moderators can still lower, lock and lift holds.
+     */
+    private function grantsWhatOnlyAdminsMay(User $user, array $body): bool
+    {
+        if (! array_key_exists('level', $body) || ! is_numeric($body['level'])) {
+            return false;
+        }
+
+        $from = (int) $user->getAttribute('trust_level');
+        $to = max(0, min(Config::MAX, (int) $body['level']));
+
+        if ($to <= $from) {
+            return false;
+        }
+
+        if ($to === Config::MAX) {
+            return true;
+        }
+
+        $groups = array_values(array_filter($this->config->groups(), fn ($level) => $level > $from && $level <= $to, ARRAY_FILTER_USE_KEY));
+
+        return $groups && $this->db->table('group_permission')->whereIn('group_id', $groups)->exists();
     }
 
     private function update(User $user, User $actor, array $body): void

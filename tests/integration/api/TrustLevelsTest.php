@@ -437,12 +437,36 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function staff_set_and_lock_a_level(): void
     {
-        [$status, $body] = $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 4, 'locked' => true, 'note' => 'Runs the ferry thread']);
+        [$status, $body] = $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 3, 'locked' => true, 'note' => 'Runs the ferry thread']);
         $this->assertSame(200, $status);
-        $this->assertSame(4, $body['data']['level']);
+        $this->assertSame(3, $body['data']['level']);
         $this->assertTrue($body['data']['locked']);
         $this->assertSame('Runs the ferry thread', $body['data']['note']);
         $this->assertSame(1, $this->db()->table('trust_events')->where('user_id', 4)->where('type', 'locked')->count());
+    }
+
+    #[Test]
+    public function a_moderator_cant_raise_themselves_or_anyone_to_leader(): void
+    {
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/5', 5, ['level' => 4])[0], 'own account');
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/5', 5, ['locked' => true])[0], 'own account');
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 4])[0], 'Leader is for admins');
+        $this->assertSame(1, (int) $this->user(5)->trust_level);
+        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/4', 1, ['level' => 4])[0]);
+        $this->assertSame(4, (int) $this->user(4)->trust_level);
+    }
+
+    #[Test]
+    public function a_moderator_cant_hand_out_a_level_groups_permissions(): void
+    {
+        $this->prepareDatabase([
+            Group::class => [['id' => 11, 'name_singular' => 'Trust 2', 'name_plural' => 'Trust 2', 'is_hidden' => 1]],
+            'group_permission' => [['permission' => 'trust.test', 'group_id' => 11]],
+        ]);
+        $this->setConfig(['groups' => [2 => 11]]);
+
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/3', 5, ['level' => 2])[0]);
+        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 0])[0], 'lowering is fine');
     }
 
     #[Test]
