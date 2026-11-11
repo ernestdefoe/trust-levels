@@ -115,6 +115,14 @@ class Spam
         }
     }
 
+    /** Gatehouse approved someone it was holding: an on-hold from their first days ends with it. */
+    public function approvedByGatehouse(object $event): void
+    {
+        if ($event->user->getAttribute('trust_silenced_at')) {
+            $this->unsilence($event->user, $event->actor ?? null);
+        }
+    }
+
     /** flarum/suspend Suspended: remembered, since core keeps no history. */
     public function suspended(object $event): void
     {

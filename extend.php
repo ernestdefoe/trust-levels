@@ -149,6 +149,9 @@ return [
         ->whenExtensionEnabled('flarum-suspend', fn () => [
             (new Extend\Event())->listen('Flarum\Suspend\Event\Suspended', [Spam::class, 'suspended']),
         ])
+        ->whenExtensionEnabled('ernestdefoe-gatehouse', fn () => [
+            (new Extend\Event())->listen('Ernestdefoe\Gatehouse\Event\Approved', [Spam::class, 'approvedByGatehouse']),
+        ])
         ->whenExtensionEnabled('flarum-messages', fn () => [
             (new Extend\Event())->listen('Flarum\Messages\DialogMessage\Event\Creating', [Limits::class, 'messageCreating']),
         ])
