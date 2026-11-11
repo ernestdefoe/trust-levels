@@ -88,7 +88,13 @@ class Evaluator
         }
 
         $ids = array_map(fn (User $u) => (int) $u->id, $users);
-        $unplaced = array_values(array_filter($ids, fn ($id) => ! $this->find($users, $id)->getAttribute('trust_level_at')));
+        // History is estimated only for members who were here before the install;
+        // someone who signs up later starts from what is tracked.
+        $unplaced = array_values(array_filter($ids, function ($id) use ($users) {
+            $user = $this->find($users, $id);
+
+            return ! $user->getAttribute('trust_level_at') && $this->joinedBeforeInstall($user);
+        }));
 
         if ($unplaced) {
             $this->estimate($unplaced);

@@ -276,6 +276,19 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function a_new_signup_gets_no_estimate_from_history(): void
+    {
+        $db = $this->db();
+        $db->table('users')->where('id', 3)->update(['trust_level_at' => null]);
+        $db->table('discussion_user')->insert(['user_id' => 3, 'discussion_id' => 1, 'last_read_post_number' => 40, 'last_read_at' => Carbon::now()]);
+
+        $this->check();
+
+        $this->assertSame(0, (int) $db->table('trust_stats')->where('user_id', 3)->value('base_posts_read'));
+        $this->assertSame(0, (int) $db->table('trust_stats')->where('user_id', 3)->value('base_read_seconds'));
+    }
+
+    #[Test]
     public function a_quiet_regular_drops_after_the_grace_period_but_a_locked_one_never_moves(): void
     {
         $this->db()->table('users')->where('id', 10)->update(['last_seen_at' => Carbon::now()]);
