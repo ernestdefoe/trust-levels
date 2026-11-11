@@ -41,12 +41,16 @@ class Exempt
      */
     public function level(User $actor): int
     {
-        $level = (int) $actor->getAttribute('trust_level');
+        return $actor->exists ? $this->effective((int) $actor->getAttribute('trust_level'), $actor->getAttribute('trust_level_at'), $actor->joined_at) : 0;
+    }
 
-        if ($level === 0 && ! $actor->getAttribute('trust_level_at') && $actor->exists) {
+    /** The same, from raw columns (for rows read without a model). */
+    public function effective(int $level, mixed $levelAt, mixed $joinedAt): int
+    {
+        if ($level === 0 && ! $levelAt) {
             $installed = $this->settings->get(Config::INSTALLED);
 
-            if (! $installed || ! $actor->joined_at || $actor->joined_at->lt(Carbon::parse($installed))) {
+            if (! $installed || ! $joinedAt || Carbon::parse($joinedAt)->lt(Carbon::parse($installed))) {
                 return 1;
             }
         }

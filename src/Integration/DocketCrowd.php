@@ -3,6 +3,7 @@
 namespace ErnestDefoe\TrustLevels\Integration;
 
 use ErnestDefoe\Docket\Crowd\Crowd;
+use ErnestDefoe\TrustLevels\Access\Exempt;
 use Illuminate\Database\ConnectionInterface;
 
 /**
@@ -26,10 +27,12 @@ class DocketCrowd extends Crowd
         }
 
         $trackRecord = (bool) $this->setting('trust');
-        $levels = resolve(ConnectionInterface::class)->table('users')->whereIn('id', $userIds)->pluck('trust_level', 'id');
+        $exempt = resolve(Exempt::class);
+        $rows = resolve(ConnectionInterface::class)->table('users')->whereIn('id', $userIds)->get(['id', 'trust_level', 'trust_level_at', 'joined_at']);
 
-        foreach ($levels as $id => $level) {
-            $byLevel = self::LEVEL_WEIGHTS[min(4, (int) $level)];
+        foreach ($rows as $row) {
+            $id = $row->id;
+            $byLevel = self::LEVEL_WEIGHTS[min(4, $exempt->effective((int) $row->trust_level, $row->trust_level_at, $row->joined_at))];
             $weights[(int) $id] = $trackRecord ? ($weights[(int) $id] + $byLevel) / 2 : $byLevel;
         }
 

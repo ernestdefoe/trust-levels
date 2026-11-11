@@ -424,6 +424,19 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function reporters_from_before_the_install_count_as_basic_before_their_first_check(): void
+    {
+        $this->setConfig(['spam' => ['flagger_level' => 1]]);
+        $this->db()->table('users')->whereIn('id', [6, 7, 8])->update(['trust_level' => 0, 'trust_level_at' => null, 'joined_at' => Carbon::now()->subYear()]);
+
+        foreach ([6, 7, 8] as $flagger) {
+            $this->assertSame(201, $this->flag($flagger, 3));
+        }
+
+        $this->assertNotNull($this->db()->table('posts')->where('id', 3)->value('hidden_at'));
+    }
+
+    #[Test]
     public function upheld_flags_drop_a_member_one_level(): void
     {
         $this->setConfig(['spam' => ['drop_flags' => 2, 'flags' => 0]]);
@@ -532,6 +545,19 @@ class TrustLevelsTest extends TestCase
         $this->assertTrue(User::query()->find(10)->hasPermission('trust.test'));
         $this->assertFalse(User::query()->find(3)->hasPermission('trust.test'));
         $this->assertSame(0, $this->db()->table('group_user')->where('group_id', 10)->count(), 'no one is put in the group');
+    }
+
+    #[Test]
+    public function a_member_from_before_the_install_has_basics_group_before_their_first_check(): void
+    {
+        $this->prepareDatabase([
+            Group::class => [['id' => 10, 'name_singular' => 'Trust 1', 'name_plural' => 'Trust 1', 'is_hidden' => 1]],
+            'group_permission' => [['permission' => 'trust.test', 'group_id' => 10]],
+        ]);
+        $this->setConfig(['groups' => [1 => 10]]);
+        $this->db()->table('users')->where('id', 2)->update(['trust_level' => 0, 'trust_level_at' => null, 'joined_at' => Carbon::now()->subYear()]);
+
+        $this->assertTrue(User::query()->find(2)->hasPermission('trust.test'));
     }
 
     #[Test]

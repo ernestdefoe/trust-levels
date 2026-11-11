@@ -2,6 +2,7 @@
 
 namespace ErnestDefoe\TrustLevels;
 
+use ErnestDefoe\TrustLevels\Access\Exempt;
 use Flarum\User\User;
 
 /**
@@ -17,7 +18,7 @@ use Flarum\User\User;
  */
 class InheritPermissions
 {
-    public function __construct(private Config $config)
+    public function __construct(private Config $config, private Exempt $exempt)
     {
     }
 
@@ -27,9 +28,13 @@ class InheritPermissions
      */
     public function __invoke(User $user, array $groupIds): array
     {
-        $level = (int) $user->getAttribute('trust_level');
+        if ($user->isGuest() || ! $user->is_email_confirmed) {
+            return $groupIds;
+        }
 
-        if ($level < 1 || $user->isGuest() || ! $user->is_email_confirmed) {
+        $level = $this->exempt->level($user);
+
+        if ($level < 1) {
             return $groupIds;
         }
 

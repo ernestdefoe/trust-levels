@@ -61,10 +61,12 @@ class Spam
         }
 
         $flaggers = $this->flaggers($post);
+        $min = $this->config->spam('flagger_level');
         $counted = $flaggers ? $this->db->table('users')
             ->whereIn('id', $flaggers)
-            ->where('trust_level', '>=', $this->config->spam('flagger_level'))
             ->whereNull('trust_silenced_at')
+            ->get(['trust_level', 'trust_level_at', 'joined_at'])
+            ->filter(fn ($u) => $this->exempt->effective((int) $u->trust_level, $u->trust_level_at, $u->joined_at) >= $min)
             ->count() : 0;
 
         if ($counted < $needed) {
