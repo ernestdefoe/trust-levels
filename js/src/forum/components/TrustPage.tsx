@@ -152,7 +152,7 @@ export default class TrustPage extends UserPage {
           <section className="TrustCard">
             <h3>{t('keep_title', { level: levelName(3) })}</h3>
             <p className="TrustCard-sub">{t('keep_sub')}</p>
-            {Rows(p.keep, true)}
+            {Rows(p.keep)}
           </section>
         ) : null}
 
@@ -212,7 +212,7 @@ export default class TrustPage extends UserPage {
           {p.next!.level === 3 ? <> · {t('window')}</> : null}
           {p.computedAt ? <> · {t('updated', { time: humanTime(p.computedAt) })}</> : null}
         </p>
-        {Rows(rows, p.next!.level === 3)}
+        {Rows(rows)}
       </section>
     );
   }

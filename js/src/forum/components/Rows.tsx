@@ -6,17 +6,14 @@ import { NS, Row } from '../../common/levels';
 declare const m: Mithril.Static;
 
 /** A requirement list: met or not, a bar, "have / need". */
-export default function Rows(rows: Row[], window = false): Mithril.Children {
+export default function Rows(rows: Row[]): Mithril.Children {
   return rows.map((row) => {
     const pct = row.upTo ? (row.met ? 100 : 0) : row.need > 0 ? Math.min(100, Math.round((row.have / row.need) * 100)) : 100;
 
     return (
       <div className={'TrustRow' + (row.met ? ' TrustRow--met' : '')}>
         <Icon name={row.met ? 'fas fa-circle-check' : 'far fa-circle'} className="TrustRow-icon" />
-        <span className="TrustRow-label">
-          {app.translator.trans(`${NS}.forum.req.${row.key}`, { need: row.need })}
-          {window && row.key !== 'not_suspended' && !row.upTo ? <em>{app.translator.trans(`${NS}.forum.req.in_window`)}</em> : null}
-        </span>
+        <span className="TrustRow-label">{app.translator.trans(`${NS}.forum.req.${row.key}`, { need: row.need })}</span>
         <span className="TrustRow-meter" aria-hidden="true">
           <b style={{ width: pct + '%' }} />
         </span>

@@ -70,7 +70,7 @@ ernestdefoe-trust-levels:
       window: "counted over the last 100 days"
       updated: "checked {time}"
       keep_title: "Staying a {level}"
-      keep_sub: "Regulars are checked every day over the last 100 days. Falling a little short is fine."
+      keep_sub: "Checked every day, counted over the last 100 days. Falling a little short is fine."
       leader_by_staff: "{level} is given by the staff to members they trust most."
       unlocks_title: "What {level} unlocks"
       history_title: History
@@ -91,7 +91,6 @@ ernestdefoe-trust-levels:
       flagged_posts: "Posts reported and removed: at most {need}"
       flagged_by: "People whose reports were upheld: at most {need}"
       not_suspended: "Not suspended in the last 6 months"
-      in_window: "in the last 100 days"
     unlocks:
       links: "Up to {value} links in a post"
       links_none: "Any number of links"
