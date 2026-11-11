@@ -147,6 +147,9 @@ return [
         ->whenExtensionEnabled('flarum-messages', fn () => [
             (new Extend\Event())->listen('Flarum\Messages\DialogMessage\Event\Creating', [Limits::class, 'messageCreating']),
         ])
+        ->whenExtensionEnabled('flarum-gdpr', fn () => [
+            (new \Flarum\Gdpr\Extend\UserData())->addType(\ErnestDefoe\TrustLevels\Gdpr\TrustData::class),
+        ])
         ->whenExtensionEnabled('ernestdefoe-buzz', fn () => Optional::buzz())
         ->whenExtensionEnabled('ernestdefoe-onramp', fn () => Optional::onramp()),
 

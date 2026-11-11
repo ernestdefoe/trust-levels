@@ -6,6 +6,9 @@ ernestdefoe-trust-levels:
       2: Member
       3: Regular
       4: Leader
+    gdpr:
+      export: "Your trust level, your daily reading and visit counts, and your trust level history."
+      delete: "Deletes your daily reading and visit counts and your trust level history."
 
   api:
     limits:
