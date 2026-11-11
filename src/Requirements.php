@@ -69,9 +69,15 @@ class Requirements
             $add('likes_received_days', $s['likes_received_days_w'], $r['likes_received_days']);
         }
 
+        // "Fewer than N": 0 turns the requirement off, like every other one.
         if ($this->stats->flagsOn()) {
-            $add('flagged_posts', $s['flagged_posts'], max(0, $r['flagged_posts'] - 1), true);
-            $add('flagged_by', $s['flagged_by'], max(0, $r['flagged_by'] - 1), true);
+            if ($r['flagged_posts'] > 0) {
+                $add('flagged_posts', $s['flagged_posts'], $r['flagged_posts'] - 1, true);
+            }
+
+            if ($r['flagged_by'] > 0) {
+                $add('flagged_by', $s['flagged_by'], $r['flagged_by'] - 1, true);
+            }
         }
 
         if ($r['suspended_months'] > 0) {

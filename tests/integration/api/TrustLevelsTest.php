@@ -316,6 +316,19 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function zero_turns_the_reported_posts_requirement_off(): void
+    {
+        $this->setConfig(['req' => [3 => ['flagged_posts' => 0, 'flagged_by' => 0]]]);
+        $this->db()->table('trust_events')->insert(['user_id' => 10, 'type' => 'flag_upheld', 'post_id' => 1, 'data' => json_encode(['flaggers' => [6]]), 'created_at' => Carbon::now()]);
+        $this->db()->table('users')->where('id', 10)->update(['last_seen_at' => Carbon::now(), 'trust_level_at' => Carbon::now()]);
+
+        $this->check();
+
+        $keep = json_decode($this->db()->table('trust_stats')->where('user_id', 10)->value('data'), true)['keep'];
+        $this->assertSame([], array_values(array_filter($keep, fn ($r) => str_starts_with($r['key'], 'flagged'))));
+    }
+
+    #[Test]
     public function a_quiet_regular_drops_after_the_grace_period_but_a_locked_one_never_moves(): void
     {
         $this->db()->table('users')->where('id', 10)->update(['last_seen_at' => Carbon::now()]);
