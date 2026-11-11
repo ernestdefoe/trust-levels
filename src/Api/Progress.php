@@ -84,7 +84,10 @@ class Progress
             $now = $this->config->limit($limit, $from);
             $then = $this->config->limit($limit, $to);
 
-            if ($now !== null && ($then === null || $then > $now)) {
+            // Fewer seconds between posts is more; everywhere else a higher number is.
+            $better = $limit === 'post_seconds' ? $then < $now : $then > $now;
+
+            if ($now !== null && ($then === null || $better)) {
                 $out[] = ['key' => $limit, 'value' => $then];
             }
         }

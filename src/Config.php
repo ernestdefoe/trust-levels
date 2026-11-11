@@ -152,7 +152,9 @@ class Config
         for ($l = $level + 1; $l <= self::MAX; $l++) {
             $next = $this->limit($limit, $l);
 
-            if ($next === null || $next > ($this->limit($limit, $level) ?? 0)) {
+            $now = $this->limit($limit, $level) ?? 0;
+
+            if ($next === null || ($limit === 'post_seconds' ? $next < $now : $next > $now)) {
                 return $l;
             }
         }
