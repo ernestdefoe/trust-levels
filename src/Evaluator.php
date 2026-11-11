@@ -8,6 +8,7 @@ use Flarum\Extension\ExtensionManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Database\ConnectionInterface;
 
@@ -51,28 +52,35 @@ class Evaluator
      * Members seen since the last run, members not placed yet, and (with
      * $all) every Regular, whose 100-day window moves even if they don't.
      *
-     * @return int members checked
+     * One run at a time, whichever schedule (or Run now) started it: $wait
+     * seconds for one already going (the nightly pass waits, so pruning and
+     * Regular drops aren't skipped behind a long hourly run).
+     *
+     * @return int|null members checked, or null when another run held the lock
      */
-    public function run(bool $all = false): int
+    public function run(bool $all = false, int $wait = 0): ?int
     {
-        // One run at a time, whichever schedule (or Run now) started it.
         $store = $this->cache->getStore();
 
-        if ($store instanceof LockProvider) {
-            $lock = $store->lock('ernestdefoe-trust-levels.run', 3600);
-
-            if (! $lock->get()) {
-                return 0;
-            }
-
-            try {
-                return $this->runLocked($all);
-            } finally {
-                $lock->release();
-            }
+        if (! $store instanceof LockProvider) {
+            return $this->runLocked($all);
         }
 
-        return $this->runLocked($all);
+        $lock = $store->lock('ernestdefoe-trust-levels.run', 3600);
+
+        try {
+            if (! ($wait > 0 ? $lock->block($wait) : $lock->get())) {
+                return null;
+            }
+        } catch (LockTimeoutException) {
+            return null;
+        }
+
+        try {
+            return $this->runLocked($all);
+        } finally {
+            $lock->release();
+        }
     }
 
     private function runLocked(bool $all): int

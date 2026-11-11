@@ -569,6 +569,22 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function run_now_says_so_when_a_check_is_already_running(): void
+    {
+        $this->app();
+        $lock = $this->app->getContainer()->make('cache.store')->getStore()->lock('ernestdefoe-trust-levels.run', 60);
+        $this->assertTrue($lock->get());
+
+        [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
+        $this->assertSame(200, $status);
+        $this->assertTrue($body['data']['busy']);
+
+        $lock->release();
+        [, $body] = $this->api('POST', '/api/trust-levels/run', 1);
+        $this->assertFalse($body['data']['busy']);
+    }
+
+    #[Test]
     public function the_admin_dashboard_counts_members_per_level(): void
     {
         [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);

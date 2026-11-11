@@ -156,6 +156,7 @@ ernestdefoe-trust-levels:
       last_run: "Last check: {time} ({count} members, {seconds} s)"
       never_run: "Not checked yet."
       run_now: Run now
+      busy: "A check is already running. Its results will show here when it finishes."
       reason:
         placed: placed from earlier activity
         quiet: less active

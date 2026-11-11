@@ -29,7 +29,17 @@ class EvaluateCommand extends AbstractCommand
 
     protected function fire(): int
     {
-        $checked = $this->evaluator->run((bool) $this->input->getOption('all'));
+        // The nightly pass waits up to 15 minutes for an hourly run still going;
+        // an hourly run that finds one going leaves it to the next hour.
+        $all = (bool) $this->input->getOption('all');
+        $checked = $this->evaluator->run($all, $all ? 900 : 0);
+
+        if ($checked === null) {
+            $this->info('A check is already running.');
+
+            return 0;
+        }
+
         $this->info("Checked $checked members.");
 
         return 0;

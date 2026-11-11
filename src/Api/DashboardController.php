@@ -32,9 +32,11 @@ class DashboardController implements RequestHandlerInterface
     {
         RequestUtil::getActor($request)->assertAdmin();
 
+        $busy = false;
+
         if ($request->getMethod() === 'POST') {
             @set_time_limit(300);
-            $this->evaluator->run();
+            $busy = $this->evaluator->run() === null;
         }
 
         $week = Carbon::now()->subDays(7);
@@ -102,6 +104,7 @@ class DashboardController implements RequestHandlerInterface
             'lastRun' => $lastRun,
             'lastRunCount' => (int) $this->settings->get(Config::LAST_RUN.'_count'),
             'lastRunSeconds' => (float) $this->settings->get(Config::LAST_RUN.'_seconds'),
+            'busy' => $busy,
             'stale' => ! $lastRun || Carbon::parse($lastRun)->lt(Carbon::now()->subHours(2)),
         ]]);
     }

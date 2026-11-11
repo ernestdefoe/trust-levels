@@ -92,6 +92,7 @@ interface Dashboard {
   lastRunCount: number;
   lastRunSeconds: number;
   stale: boolean;
+  busy: boolean;
 }
 
 /**
@@ -127,7 +128,10 @@ export default class TrustLevelsPage extends ExtensionPage<ExtensionPageAttrs> {
         method: run ? 'POST' : 'GET',
         url: app.forum.attribute('apiUrl') + (run ? '/trust-levels/run' : '/trust-levels/dashboard'),
       })
-      .then((r) => (this.dashboard = r.data))
+      .then((r) => {
+        this.dashboard = r.data;
+        if (run && r.data.busy) app.alerts.show({ type: 'warning' }, t('dashboard.busy'));
+      })
       .finally(() => {
         this.running = false;
         m.redraw();
