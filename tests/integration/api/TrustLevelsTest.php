@@ -200,6 +200,19 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function two_checks_promoting_at_once_promote_once(): void
+    {
+        $this->app();
+        $stale = User::query()->find(3);
+        $this->db()->table('users')->where('id', 3)->update(['trust_level' => 1]);
+
+        $this->app->getContainer()->make(\ErnestDefoe\TrustLevels\LevelWriter::class)->set($stale, 1, 'promoted');
+
+        $this->assertSame(0, $this->db()->table('trust_events')->where('user_id', 3)->count());
+        $this->assertSame(0, $this->db()->table('notifications')->where('user_id', 3)->count());
+    }
+
+    #[Test]
     public function members_from_before_the_install_are_placed_never_below_basic_and_not_told(): void
     {
         // User 2 joined before the install; nina (3) joined since and stays New.

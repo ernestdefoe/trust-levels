@@ -7,6 +7,8 @@ use ErnestDefoe\TrustLevels\Stats\Stats;
 use Flarum\Extension\ExtensionManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Database\ConnectionInterface;
 
 /**
@@ -41,6 +43,7 @@ class Evaluator
         private LevelWriter $writer,
         private ExtensionManager $extensions,
         private SettingsRepositoryInterface $settings,
+        private Cache $cache,
     ) {
     }
 
@@ -51,6 +54,28 @@ class Evaluator
      * @return int members checked
      */
     public function run(bool $all = false): int
+    {
+        // One run at a time, whichever schedule (or Run now) started it.
+        $store = $this->cache->getStore();
+
+        if ($store instanceof LockProvider) {
+            $lock = $store->lock('ernestdefoe-trust-levels.run', 3600);
+
+            if (! $lock->get()) {
+                return 0;
+            }
+
+            try {
+                return $this->runLocked($all);
+            } finally {
+                $lock->release();
+            }
+        }
+
+        return $this->runLocked($all);
+    }
+
+    private function runLocked(bool $all): int
     {
         $lastRun = $this->settings->get(Config::LAST_RUN);
         $since = $lastRun ? Carbon::parse($lastRun)->subMinutes(10) : Carbon::now()->subDay();

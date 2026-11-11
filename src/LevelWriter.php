@@ -37,7 +37,16 @@ class LevelWriter
             return;
         }
 
-        $this->db->table('users')->where('id', $user->id)->update(['trust_level' => $to, 'trust_level_at' => $now]);
+        // Only from the level we read: when the hourly run and a member's own
+        // quick check promote them at the same moment, the second one changes
+        // no row and stops here (no second history row, alert or Buzz post).
+        $changed = $this->db->table('users')->where('id', $user->id)->where('trust_level', $from)
+            ->update(['trust_level' => $to, 'trust_level_at' => $now]);
+
+        if (! $changed) {
+            return;
+        }
+
         $user->setRawAttributes(['trust_level' => $to, 'trust_level_at' => $now] + $user->getAttributes(), true);
 
         if ($from === $to) {
