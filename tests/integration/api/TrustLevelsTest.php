@@ -37,12 +37,12 @@ class TrustLevelsTest extends TestCase
                 ['id' => 3, 'username' => 'nina', 'email' => 'nina@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level' => 0, 'trust_level_at' => $placed],
                 ['id' => 4, 'username' => 'basil', 'email' => 'basil@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level' => 1, 'trust_level_at' => $placed],
                 ['id' => 5, 'username' => 'mod', 'email' => 'mod@machine.local', 'is_email_confirmed' => 1, 'joined_at' => $this->then, 'trust_level' => 1, 'trust_level_at' => $placed],
-                // Three Basic flaggers.
-                ['id' => 6, 'username' => 'f1', 'email' => 'f1@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 1, 'trust_level_at' => $placed],
-                ['id' => 7, 'username' => 'f2', 'email' => 'f2@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 1, 'trust_level_at' => $placed],
-                ['id' => 8, 'username' => 'f3', 'email' => 'f3@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 1, 'trust_level_at' => $placed],
-                // A New flagger, whose flag doesn't count towards hiding.
-                ['id' => 9, 'username' => 'f0', 'email' => 'f0@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 0, 'trust_level_at' => $placed],
+                // Three Member flaggers.
+                ['id' => 6, 'username' => 'f1', 'email' => 'f1@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 2, 'trust_level_at' => $placed],
+                ['id' => 7, 'username' => 'f2', 'email' => 'f2@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 2, 'trust_level_at' => $placed],
+                ['id' => 8, 'username' => 'f3', 'email' => 'f3@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 2, 'trust_level_at' => $placed],
+                // A Basic flagger, whose flag doesn't count towards hiding.
+                ['id' => 9, 'username' => 'f0', 'email' => 'f0@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 1, 'trust_level_at' => $placed],
                 // A Regular.
                 ['id' => 10, 'username' => 'reggie', 'email' => 'reggie@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 3, 'trust_level_at' => Carbon::now()->subDays(60)],
             ],
@@ -360,7 +360,7 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function enough_flags_hide_a_post_and_silence_its_new_author(): void
     {
-        // A New member's flag doesn't count; two Basic ones aren't enough.
+        // A Basic member's flag doesn't count (Basic takes minutes to reach); two Member ones aren't enough.
         foreach ([9, 6, 7] as $flagger) {
             $this->assertSame(201, $this->flag($flagger, 3));
         }

@@ -568,7 +568,7 @@ export default class TrustLevelsPage extends ExtensionPage<ExtensionPageAttrs> {
           </Alert>
         ) : null}
         {docket ? null : row('flags', 3)}
-        {row('flagger_level', 1, { level: levelName(this.get(['spam', 'flagger_level'], 1)) })}
+        {row('flagger_level', 2, { level: levelName(this.get(['spam', 'flagger_level'], 2)) })}
         {row('silence_up_to', 1, { level: levelName(this.get(['spam', 'silence_up_to'], 1)) })}
         {enabled('ernestdefoe-gatehouse') ? row('gatehouse_days', 7) : null}
         {row('drop_flags', 3)}

@@ -233,7 +233,7 @@ ernestdefoe-trust-levels:
       flags: "Reports that hide a post"
       flags_help: "Different members reporting the same post hide it at once, until a moderator decides. 0 turns this off."
       flagger_level: "Reports count from level"
-      flagger_level_help: "Only reports from members at this level or above count towards hiding (New accounts can't team up)."
+      flagger_level_help: "Only reports from members at this level or above count towards hiding. Member by default: Basic takes minutes to reach, so a few new accounts can't team up."
       silence_up_to: "Put authors on hold up to level"
       silence_up_to_help: "When a post is hidden this way, its author is put on hold if they're at this level or lower: they can read and edit their own posts, but not post, reply, message or like until a moderator decides."
       gatehouse_days: "Send back to Gatehouse within (days)"

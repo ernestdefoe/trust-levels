@@ -52,7 +52,7 @@ class Config
         ],
         'uploads_from' => 2,
         'approval_posts' => 2,
-        'spam' => ['flags' => 3, 'flagger_level' => 1, 'silence_up_to' => 1, 'gatehouse_days' => 7, 'drop_flags' => 3],
+        'spam' => ['flags' => 3, 'flagger_level' => 2, 'silence_up_to' => 1, 'gatehouse_days' => 7, 'drop_flags' => 3],
         'grace_days' => 14,
         'buzz' => false,
         'exempt_groups' => [],
