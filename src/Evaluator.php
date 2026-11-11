@@ -158,8 +158,9 @@ class Evaluator
 
             $level = (int) $user->getAttribute('trust_level');
 
-            if ($next && $next['level'] <= $level) {
-                $next = null;
+            // Placed or set above what the numbers earn: show the level above where they are.
+            if (! $next || $next['level'] <= $level) {
+                $next = $level < Config::AUTO_MAX ? ['level' => $level + 1, 'rows' => $this->requirements->rows($level + 1, $s, $totals)] : null;
             }
 
             if ($level === 3) {

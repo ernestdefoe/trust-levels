@@ -373,6 +373,17 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function a_member_set_above_their_numbers_still_sees_the_next_level(): void
+    {
+        $this->db()->table('users')->where('id', 3)->update(['trust_level' => 2, 'last_seen_at' => Carbon::now()]);
+        $this->check();
+
+        $next = json_decode($this->db()->table('trust_stats')->where('user_id', 3)->value('data'), true)['next'];
+        $this->assertSame(3, $next['level']);
+        $this->assertSame(2, (int) $this->user(3)->trust_level, 'never lowered for numbers below their level');
+    }
+
+    #[Test]
     public function staff_set_and_lock_a_level(): void
     {
         [$status, $body] = $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 4, 'locked' => true, 'note' => 'Runs the ferry thread']);
