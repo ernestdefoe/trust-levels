@@ -70,6 +70,12 @@ export default class TrustPage extends UserPage {
   }
 
   show(user: any) {
+    // Only the member and staff get a level: anyone else following a link lands on the profile.
+    if (user.attribute('trustLevel') === undefined) {
+      m.route.set(app.route('user', { username: user.slug() }), {}, { replace: true });
+      return;
+    }
+
     super.show(user);
     app.setTitle(extractText(t('title')));
 
@@ -78,7 +84,11 @@ export default class TrustPage extends UserPage {
 
   load() {
     app
-      .request<{ data: Progress }>({ method: 'GET', url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.user!.id()}` })
+      .request<{ data: Progress }>({
+        method: 'GET',
+        url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.user!.id()}`,
+        errorHandler: () => {},
+      })
       .then((r) => {
         this.progress = r.data;
         m.redraw();
