@@ -53,6 +53,9 @@ ernestdefoe-trust-levels:
     silenced:
       title: "Your account is on hold."
       body: "Members reported one of your posts, so it's hidden while a moderator takes a look. Until then you can read, but not post, reply, edit, send messages, like or react."
+    messages:
+      from_level: "You can send private messages once you reach {level}."
+      on_hold: "You can't send private messages while your account is on hold."
     composer:
       links: "{count} of {max} links"
       images: "{count} of {max} images"

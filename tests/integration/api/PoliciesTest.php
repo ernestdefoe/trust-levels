@@ -103,6 +103,22 @@ class PoliciesTest extends TestCase
         Carbon::setTestNow();
     }
 
+    /** The member's own browser hears they can't message yet (to disable the buttons); nobody else does. */
+    #[Test]
+    public function only_the_member_is_told_they_cant_send_messages_yet(): void
+    {
+        $own = json_decode((string) $this->send($this->request('GET', '/api/users/3', ['authenticatedAs' => 3]))->getBody(), true)['data']['attributes'];
+        $this->assertFalse($own['trustLimits']['messages']);
+        $this->assertSame(1, $own['trustLimits']['messagesFrom']);
+
+        $held = json_decode((string) $this->send($this->request('GET', '/api/users/7', ['authenticatedAs' => 7]))->getBody(), true)['data']['attributes'];
+        $this->assertFalse($held['trustLimits']['messages']);
+        $this->assertNull($held['trustLimits']['messagesFrom']);
+
+        $other = (string) $this->send($this->request('GET', '/api/users/3', ['authenticatedAs' => 5]))->getBody();
+        $this->assertStringNotContainsString('trustLimits', $other);
+    }
+
     #[Test]
     public function a_private_message_has_the_same_link_limit_as_a_post(): void
     {

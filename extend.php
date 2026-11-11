@@ -94,9 +94,19 @@ return [
                     $exempt = resolve(\ErnestDefoe\TrustLevels\Access\Exempt::class);
                     $config = resolve(\ErnestDefoe\TrustLevels\Config::class);
 
-                    return $exempt->is($user) ? null : [
-                        'links' => $config->limit('links', $exempt->level($user)),
-                        'images' => $config->limit('images', $exempt->level($user)),
+                    if ($exempt->is($user)) {
+                        return null;
+                    }
+
+                    $level = $exempt->level($user);
+
+                    // Private messages: only this member's own browser hears it (flarum/messages'
+                    // per-user canSendAnyMessage must stay the same for everyone, see TrustPolicy).
+                    return [
+                        'links' => $config->limit('links', $level),
+                        'images' => $config->limit('images', $level),
+                        'messages' => ! $user->getAttribute('trust_silenced_at') && $config->limit('messages_day', $level) !== 0,
+                        'messagesFrom' => $user->getAttribute('trust_silenced_at') ? null : $config->liftedAt('messages_day', $level),
                     ];
                 }),
         ]),

@@ -1,5 +1,6 @@
 import app from 'flarum/forum/app';
-import { extend } from 'flarum/common/extend';
+import { extend, override } from 'flarum/common/extend';
+import User from 'flarum/common/models/User';
 import type ItemList from 'flarum/common/utils/ItemList';
 import LinkButton from 'flarum/common/components/LinkButton';
 import Button from 'flarum/common/components/Button';
@@ -8,7 +9,7 @@ import Icon from 'flarum/common/components/Icon';
 import UserPageResolver from 'flarum/forum/resolvers/UserPageResolver';
 import UserControls from 'flarum/forum/utils/UserControls';
 import type Mithril from 'mithril';
-import { NS } from '../common/levels';
+import { NS, levelName } from '../common/levels';
 import TrustPage from './components/TrustPage';
 import TrustModal from './components/TrustModal';
 import { LevelReachedNotification, LevelDroppedNotification } from './components/LevelNotification';
@@ -97,6 +98,32 @@ app.initializers.add('ernestdefoe/trust-levels', () => {
       this.trustCounts = key;
       m.redraw();
     }
+  });
+
+  // flarum/messages: a member who can't send yet sees its buttons disabled, in their own
+  // browser only. Other members' copies of this member are never touched.
+  type Limits = { links: number | null; images: number | null; messages?: boolean; messagesFrom?: number | null } | null;
+  const ownLimits = (user: any): Limits => (user && user === app.session.user ? user.attribute('trustLimits') : null);
+
+  if ('canSendAnyMessage' in User.prototype) {
+    override(User.prototype as any, 'canSendAnyMessage', function (this: any, original: () => boolean) {
+      return ownLimits(this)?.messages === false ? false : original();
+    });
+  }
+
+  extend('ext:flarum/messages/forum/components/MessagesSidebar', 'items', function (items: ItemList<Mithril.Children>) {
+    const limits = ownLimits(app.session.user);
+    if (limits?.messages !== false) return;
+
+    items.add(
+      'trustLevels',
+      <p className="TrustMessagesNote">
+        {limits.messagesFrom === null || limits.messagesFrom === undefined
+          ? app.translator.trans(`${NS}.forum.messages.on_hold`)
+          : app.translator.trans(`${NS}.forum.messages.from_level`, { level: levelName(limits.messagesFrom) })}
+      </p>,
+      9
+    );
   });
 
   // The composer: "3 of 2 links" as they type, once they're near a limit.
