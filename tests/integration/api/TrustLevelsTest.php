@@ -234,7 +234,45 @@ class TrustLevelsTest extends TestCase
         $stats = json_decode($db->table('trust_stats')->where('user_id', 4)->value('data'), true)['stats'];
         $this->assertSame(13, $stats['days_visited_w'], '12 days posting, plus the fixture posts 30 days ago');
         $this->assertSame(1, $stats['topics_entered_w']);
-        $this->assertSame(40, $stats['posts_read_w']);
+        $this->assertSame(6, $stats['posts_read_w'], 'only posts written in the window, up to the read mark: not the 40 the mark says');
+    }
+
+    #[Test]
+    public function an_old_thread_read_to_the_end_adds_no_recent_reading(): void
+    {
+        $db = $this->db();
+        $old = Carbon::now()->subDays(300);
+        $db->table('discussions')->insert(['id' => 9, 'title' => 'Old', 'slug' => 'old', 'user_id' => 2, 'created_at' => $old, 'comment_count' => 300, 'last_post_number' => 300]);
+        $rows = [];
+        for ($n = 1; $n <= 300; $n++) {
+            $rows[] = ['id' => 1000 + $n, 'discussion_id' => 9, 'number' => $n, 'user_id' => 2, 'type' => 'comment', 'created_at' => $old, 'content' => '<t><p>x</p></t>'];
+        }
+        foreach (array_chunk($rows, 100) as $chunk) {
+            $db->table('posts')->insert($chunk);
+        }
+        $db->table('discussion_user')->insert(['user_id' => 4, 'discussion_id' => 9, 'last_read_post_number' => 300, 'last_read_at' => Carbon::now()->subDay()]);
+        $db->table('users')->where('id', 4)->update(['last_seen_at' => Carbon::now()]);
+
+        $this->check();
+
+        $stats = json_decode($db->table('trust_stats')->where('user_id', 4)->value('data'), true)['stats'];
+        $this->assertSame(0, $stats['posts_read_w']);
+    }
+
+    #[Test]
+    public function history_stops_counting_once_the_install_is_older_than_the_window(): void
+    {
+        $this->setting('ernestdefoe-trust-levels.installed_at', Carbon::now()->subDays(150)->toIso8601String());
+        $db = $this->db();
+        $db->table('discussion_user')->insert(['user_id' => 4, 'discussion_id' => 1, 'last_read_post_number' => 6, 'last_read_at' => Carbon::now()->subDays(3)]);
+        $db->table('users')->where('id', 4)->update(['last_seen_at' => Carbon::now()]);
+
+        $this->check();
+
+        $stats = json_decode($db->table('trust_stats')->where('user_id', 4)->value('data'), true)['stats'];
+        $this->assertSame(0, $stats['posts_read_w']);
+        $this->assertSame(0, $stats['topics_entered_w']);
+        $this->assertSame(0, $stats['days_visited_w']);
     }
 
     #[Test]

@@ -3,7 +3,9 @@
 namespace ErnestDefoe\TrustLevels\Stats;
 
 use Carbon\Carbon;
+use ErnestDefoe\TrustLevels\Config;
 use Flarum\Extension\ExtensionManager;
+use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 
@@ -20,7 +22,7 @@ class Stats
 {
     public const WINDOW_DAYS = 100;
 
-    public function __construct(private ConnectionInterface $db, private ExtensionManager $extensions)
+    public function __construct(private ConnectionInterface $db, private ExtensionManager $extensions, private SettingsRepositoryInterface $settings)
     {
     }
 
@@ -135,10 +137,18 @@ class Stats
      * The 100-day window from what Flarum already records, for the days before
      * the extension tracked them: discussions read recently (core's read marks
      * carry a date) and days the member posted or liked. Whichever is higher
-     * counts, so a forum's regulars can be Regulars from the first check.
+     * counts, so a forum's regulars can be Regulars from the first check. Only
+     * while the install is less than 100 days old.
      */
     private function windowFromHistory(array $ids, Carbon $since, array &$out): void
     {
+        // Once the extension has tracked the whole window itself, history adds nothing.
+        $installed = $this->settings->get(Config::INSTALLED);
+
+        if (! $installed || Carbon::parse($installed)->lte($since)) {
+            return;
+        }
+
         $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
 
         foreach ($this->db->table('discussion_user')
@@ -147,12 +157,28 @@ class Stats
             ->where('last_read_post_number', '>', 0)
             ->groupBy('user_id')
             ->select('user_id')
-            ->selectRaw('count(*) as topics, sum('.$w('discussion_user.last_read_post_number').') as posts')
+            ->selectRaw('count(*) as topics')
             ->get() as $row) {
-            $o = &$out[(int) $row->user_id];
-            $o['topics_entered_w'] = max($o['topics_entered_w'], (int) $row->topics);
-            $o['posts_read_w'] = max($o['posts_read_w'], (int) $row->posts);
-            unset($o);
+            $out[(int) $row->user_id]['topics_entered_w'] = max($out[(int) $row->user_id]['topics_entered_w'], (int) $row->topics);
+        }
+
+        // Posts read: only posts written in the window, up to where the member's
+        // read mark is. Jumping to the end of an old 2,000-post thread adds nothing.
+        foreach ($this->db->table('discussion_user')
+            ->join('posts', function ($join) {
+                $join->on('posts.discussion_id', '=', 'discussion_user.discussion_id')
+                    ->whereColumn('posts.number', '<=', 'discussion_user.last_read_post_number');
+            })
+            ->whereIn('discussion_user.user_id', $ids)
+            ->where('discussion_user.last_read_at', '>=', $since)
+            ->where('posts.created_at', '>=', $since)
+            ->where('posts.type', 'comment')
+            ->whereNull('posts.hidden_at')
+            ->groupBy('discussion_user.user_id')
+            ->select('discussion_user.user_id')
+            ->selectRaw('count(*) as posts')
+            ->get() as $row) {
+            $out[(int) $row->user_id]['posts_read_w'] = max($out[(int) $row->user_id]['posts_read_w'], (int) $row->posts);
         }
 
         $days = $this->db->table('posts')
