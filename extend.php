@@ -115,8 +115,8 @@ return [
     (new Extend\Policy())
         ->globalPolicy(TrustPolicy::class)
         ->modelPolicy(Discussion::class, TrustPolicy::class)
-        ->modelPolicy(Post::class, TrustPolicy::class)
-        ->modelPolicy('Flarum\Messages\Dialog', TrustPolicy::class),
+        ->modelPolicy(Post::class, TrustPolicy::class),
+
 
     (new Extend\Event())
         ->listen(UserRead::class, [Tracker::class, 'read'])

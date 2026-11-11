@@ -89,10 +89,10 @@ class PoliciesTest extends TestCase
     #[Test]
     public function new_members_cant_send_private_messages_and_basic_ones_five_a_day(): void
     {
-        $this->assertFalse($this->can(3, 'sendAnyMessage'));
-        $this->assertTrue($this->can(4, 'sendAnyMessage'));
-
         $message = fn (int $i) => ['data' => ['type' => 'dialog-messages', 'attributes' => ['content' => "Hi $i", 'users' => [['id' => 5]]]]];
+
+        $this->assertSame(422, $this->send_('POST', '/api/dialog-messages', 3, $message(0)));
+        $this->assertSame(422, $this->send_('POST', '/api/dialog-messages', 7, $message(0)), 'on hold');
 
         for ($i = 1; $i <= 6; $i++) {
             Carbon::setTestNow(Carbon::now()->addMinutes(2));
@@ -101,6 +101,18 @@ class PoliciesTest extends TestCase
         }
 
         Carbon::setTestNow();
+    }
+
+    /** flarum/messages serializes canSendAnyMessage on EVERY user: it must not tell who is New or on hold. */
+    #[Test]
+    public function other_members_cant_tell_who_is_new_or_on_hold(): void
+    {
+        foreach ([3, 7] as $id) {
+            $body = json_decode((string) $this->send($this->request('GET', "/api/users/$id", ['authenticatedAs' => 5]))->getBody(), true);
+            $this->assertTrue($body['data']['attributes']['canSendAnyMessage'] ?? true, "user $id");
+        }
+
+        $this->assertTrue($this->can(3, 'sendAnyMessage'));
     }
 
     #[Test]

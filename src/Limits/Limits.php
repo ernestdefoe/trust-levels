@@ -96,8 +96,16 @@ class Limits
             return;
         }
 
+        if (Exempt::silenced($actor)) {
+            throw new ValidationException(['content' => $this->translator->trans('ernestdefoe-trust-levels.api.silenced')]);
+        }
+
         $level = $this->exempt->level($actor);
         $max = $this->config->limit('messages_day', $level);
+
+        if ($max === 0) {
+            $this->fail('messages_day', $level, $max);
+        }
 
         if ($max !== null && $message::query()->where('user_id', $actor->id)->where('created_at', '>=', Carbon::now()->subDay())->count() >= $max) {
             $this->fail('messages_day', $level, $max);

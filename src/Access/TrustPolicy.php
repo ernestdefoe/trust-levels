@@ -17,9 +17,16 @@ use Flarum\User\User;
  */
 class TrustPolicy extends AbstractPolicy
 {
-    /** What a silenced member can't do (they can still read and edit their own posts). */
+    /**
+     * What a silenced member can't do (they can still read and edit their own posts).
+     *
+     * 🚨 Never an ability another extension serializes per user ($user->can(...)
+     * on every member in a response): flarum/messages sends `canSendAnyMessage`
+     * for everyone, so denying `sendAnyMessage` here told every member who was
+     * New or on hold. Private messages are refused in Limits::messageCreating.
+     */
     private const SILENCED = [
-        'startDiscussion', 'reply', 'like', 'sendAnyMessage', 'sendMessage', 'fof-upload.upload',
+        'startDiscussion', 'reply', 'like', 'fof-upload.upload',
         'replyWithoutApproval', 'startWithoutApproval',
     ];
 
@@ -38,7 +45,7 @@ class TrustPolicy extends AbstractPolicy
 
         $relevant = $silenced
             ? in_array($ability, self::SILENCED, true)
-            : in_array($ability, ['fof-upload.upload', 'sendAnyMessage', 'sendMessage', 'replyWithoutApproval', 'startWithoutApproval'], true);
+            : in_array($ability, ['fof-upload.upload', 'replyWithoutApproval', 'startWithoutApproval'], true);
 
         if (! $relevant || $this->exempt->is($actor)) {
             return null;
@@ -50,7 +57,6 @@ class TrustPolicy extends AbstractPolicy
 
         return match ($ability) {
             'fof-upload.upload' => $level < $this->config->get('uploads_from') ? $this->forceDeny() : null,
-            'sendAnyMessage', 'sendMessage' => $this->config->limit('messages_day', $level) === 0 ? $this->forceDeny() : null,
             default => $level === 0 && (int) $actor->comment_count < $this->config->get('approval_posts') ? $this->forceDeny() : null,
         };
     }
