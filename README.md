@@ -44,7 +44,7 @@ Each level can also give the permissions of a hidden group, and they add up: giv
 ## Spam defense
 
 - When enough different members (Basic or above) report the same post, it's hidden at once.
-- Its author, if New or Basic, is **put on hold**: they can read and edit their own posts, but can't post, reply, message or like until a moderator lifts it or confirms it's spam (hides their posts and suspends them).
+- Its author, if New or Basic, is **put on hold**: they can read, but can't post, reply, edit, rename, message, like, react or vote until a moderator lifts it or confirms it's spam (hides their posts and suspends them).
 - With **Docket** installed, its crowd moderation does the hiding, and each reporter counts by their level (New 0.5 up to Leader 1.5).
 - With **Gatehouse** installed, someone put on hold in their first week goes back to its approval queue.
 - With **Sleuth** installed, a member it links to a banned account stays New until staff review the match.

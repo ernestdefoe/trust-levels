@@ -112,6 +112,17 @@ class PoliciesTest extends TestCase
         $this->assertSame(422, $status, 'Basic: 5 links');
     }
 
+    #[Test]
+    public function on_hold_a_member_cant_edit_their_posts(): void
+    {
+        $db = $this->database();
+        $db->table('posts')->insert(['id' => 2, 'discussion_id' => 1, 'number' => 2, 'user_id' => 7, 'type' => 'comment', 'created_at' => Carbon::now()->subHour(), 'content' => '<t><p>Helo</p></t>', 'is_approved' => 1]);
+        $edit = fn (string $text) => $this->send_('PATCH', '/api/posts/2', 7, ['data' => ['type' => 'posts', 'id' => '2', 'attributes' => ['content' => $text]]]);
+
+        // Core allows editing your own post only while you may reply.
+        $this->assertSame(403, $edit('Hello, buy at http://spam.example'));
+    }
+
     /** flarum/messages serializes canSendAnyMessage on EVERY user: it must not tell who is New or on hold. */
     #[Test]
     public function other_members_cant_tell_who_is_new_or_on_hold(): void
@@ -135,6 +146,9 @@ class PoliciesTest extends TestCase
         $this->assertFalse($this->can(7, 'reply', $discussion));
         $this->assertFalse($this->can(7, 'like', $post));
         $this->assertFalse($this->can(7, 'startDiscussion'));
+        $this->assertFalse($this->can(7, 'rename', $discussion));
+        $this->assertFalse($this->can(7, 'react', $post));
+        $this->assertFalse($this->can(7, 'editBio', User::query()->find(7)));
         $this->assertTrue($this->can(5, 'reply', $discussion));
         $this->assertTrue($this->can(5, 'like', $post));
         $this->assertSame(200, $this->send($this->request('GET', '/api/discussions/1', ['authenticatedAs' => 7]))->getStatusCode());

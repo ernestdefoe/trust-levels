@@ -18,7 +18,8 @@ use Flarum\User\User;
 class TrustPolicy extends AbstractPolicy
 {
     /**
-     * What a silenced member can't do (they can still read and edit their own posts).
+     * What a silenced member can't do: they can read. (Core lets a member edit or hide
+     * their own post only while they may reply, so denying `reply` stops edits too.)
      *
      * 🚨 Never an ability another extension serializes per user ($user->can(...)
      * on every member in a response): flarum/messages sends `canSendAnyMessage`
@@ -28,6 +29,8 @@ class TrustPolicy extends AbstractPolicy
     private const SILENCED = [
         'startDiscussion', 'reply', 'like', 'fof-upload.upload',
         'replyWithoutApproval', 'startWithoutApproval',
+        // Renaming, reactions (fof/reactions), poll votes (fof/polls), the profile bio (fof/user-bio).
+        'rename', 'react', 'vote', 'polls.vote', 'editBio',
     ];
 
     public function __construct(private Config $config, private Exempt $exempt)

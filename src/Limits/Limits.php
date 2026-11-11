@@ -61,6 +61,7 @@ class Limits
         }
 
         $this->checkContent((string) $post->parsed_content, $level);
+
     }
 
     public function discussionSaving(DiscussionSaving $event): void

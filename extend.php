@@ -115,7 +115,9 @@ return [
     (new Extend\Policy())
         ->globalPolicy(TrustPolicy::class)
         ->modelPolicy(Discussion::class, TrustPolicy::class)
-        ->modelPolicy(Post::class, TrustPolicy::class),
+        ->modelPolicy(Post::class, TrustPolicy::class)
+        ->modelPolicy(User::class, TrustPolicy::class)
+        ->modelPolicy('FoF\Polls\Poll', TrustPolicy::class),
 
 
     (new Extend\Event())

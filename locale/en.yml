@@ -52,7 +52,7 @@ ernestdefoe-trust-levels:
       dropped_other: "A moderator changed your trust level."
     silenced:
       title: "Your account is on hold."
-      body: "Members reported one of your posts, so it's hidden while a moderator takes a look. Until then you can read, but not post, reply, send messages or like."
+      body: "Members reported one of your posts, so it's hidden while a moderator takes a look. Until then you can read, but not post, reply, edit, send messages, like or react."
     composer:
       links: "{count} of {max} links"
       images: "{count} of {max} images"
@@ -64,7 +64,7 @@ ernestdefoe-trust-levels:
       since: "since {date}"
       locked: Locked
       ladder_label: Trust levels
-      silenced_own: "Your account is on hold while a moderator looks at a reported post. You can still read and edit your own posts."
+      silenced_own: "Your account is on hold while a moderator looks at a reported post. You can still read everything."
       silenced_staff: "On hold: members reported a post, and it's hidden. Lift the hold, or confirm it's spam."
       next_title: "On your way to {level}"
       next_sub: "{done} of {total} done"
@@ -235,7 +235,7 @@ ernestdefoe-trust-levels:
       flagger_level: "Reports count from level"
       flagger_level_help: "Only reports from members at this level or above count towards hiding. Member by default: Basic takes minutes to reach, so a few new accounts can't team up."
       silence_up_to: "Put authors on hold up to level"
-      silence_up_to_help: "When a post is hidden this way, its author is put on hold if they're at this level or lower: they can read and edit their own posts, but not post, reply, message or like until a moderator decides."
+      silence_up_to_help: "When a post is hidden this way, its author is put on hold if they're at this level or lower: they can read, but not post, reply, edit, message, like or react until a moderator decides."
       gatehouse_days: "Send back to Gatehouse within (days)"
       gatehouse_days_help: "A member put on hold this soon after joining goes back to Gatehouse's queue and is signed out. 0 turns it off."
       drop_flags: "Upheld reports that drop a level"
