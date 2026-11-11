@@ -501,10 +501,11 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function locking_a_member_who_isnt_placed_yet_places_them(): void
     {
-        $this->db()->table('users')->where('id', 2)->update(['trust_level_at' => null]);
+        $this->db()->table('users')->where('id', 2)->update(['trust_level_at' => null, 'trust_level' => 0, 'joined_at' => Carbon::now()->subYear()]);
 
         $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/2', 5, ['locked' => true])[0]);
         $this->assertNotNull($this->user(2)->trust_level_at);
+        $this->assertSame(1, (int) $this->user(2)->trust_level, 'from before the install: locked at Basic, not New');
     }
 
     #[Test]

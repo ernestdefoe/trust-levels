@@ -3,6 +3,7 @@
 namespace ErnestDefoe\TrustLevels\Api;
 
 use Carbon\Carbon;
+use ErnestDefoe\TrustLevels\Access\Exempt;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\LevelWriter;
 use ErnestDefoe\TrustLevels\Spam\Spam;
@@ -30,6 +31,7 @@ class MemberController implements RequestHandlerInterface
         private Spam $spam,
         private ConnectionInterface $db,
         private Config $config,
+        private Exempt $exempt,
     ) {
     }
 
@@ -106,7 +108,10 @@ class MemberController implements RequestHandlerInterface
             // A lock is a placement too: a member locked before their first check
             // would otherwise be picked up as unplaced by every run.
             $this->db->table('users')->where('id', $user->id)->update(['trust_locked' => $locked]);
-            $this->db->table('users')->where('id', $user->id)->whereNull('trust_level_at')->update(['trust_level_at' => Carbon::now()]);
+            // At the level they count as now (a member from before the install is Basic),
+            // never by resetting them to the 0 stored before their first check.
+            $this->db->table('users')->where('id', $user->id)->whereNull('trust_level_at')
+                ->update(['trust_level' => $this->exempt->level($user), 'trust_level_at' => Carbon::now()]);
             $this->writer->log($user->id, $locked ? 'locked' : 'unlocked', null, (int) $user->getAttribute('trust_level'), $actor->id);
         }
 
