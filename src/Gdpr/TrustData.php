@@ -56,5 +56,7 @@ class TrustData extends Type
         $db->table('trust_stats')->where('user_id', $this->user->id)->delete();
         $db->table('trust_events')->where('user_id', $this->user->id)->delete();
         $db->table('trust_events')->where('actor_id', $this->user->id)->update(['actor_id' => null]);
+        // Staff's free-text note about the member goes too.
+        $db->table('users')->where('id', $this->user->id)->update(['trust_note' => null]);
     }
 }
