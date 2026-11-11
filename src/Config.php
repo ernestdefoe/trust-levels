@@ -19,6 +19,7 @@ class Config
     public const KEY = 'ernestdefoe-trust-levels.config';
     public const LAST_RUN = 'ernestdefoe-trust-levels.last_run';
     public const INSTALLED = 'ernestdefoe-trust-levels.installed_at';
+    public const TOTALS = 'ernestdefoe-trust-levels.totals';
 
     /** Levels that are reached automatically. Level 4 is given by staff. */
     public const AUTO_MAX = 3;

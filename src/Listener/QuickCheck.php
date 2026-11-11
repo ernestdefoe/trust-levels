@@ -10,9 +10,10 @@ use Flarum\Post\Event\Posted;
 use Flarum\User\User;
 
 /**
- * New and Basic members are checked right after they read or post, at most
- * once every 10 minutes each, so the first promotions don't wait for the
- * hourly run and work on hosts with no cron at all.
+ * Members at New or Basic are checked right after they read or post, at most
+ * once every 10 minutes each, so promotions up to Member don't wait for the
+ * hourly run and work on hosts with no cron at all. The forum totals come
+ * from the scheduled run's cache, so a check is the member's own numbers only.
  */
 class QuickCheck
 {

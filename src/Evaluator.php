@@ -77,6 +77,8 @@ class Evaluator
 
     private function runLocked(bool $all): int
     {
+        $this->settings->delete(Config::TOTALS);
+
         $lastRun = $this->settings->get(Config::LAST_RUN);
         $since = $lastRun ? Carbon::parse($lastRun)->subMinutes(10) : Carbon::now()->subDay();
         $started = Carbon::now();
@@ -126,7 +128,7 @@ class Evaluator
         }
 
         $stats = $this->stats->forUsers($ids, $this->config->req(3)['suspended_months'] ?: 6);
-        $totals = $this->totals ??= $this->stats->forumTotals();
+        $totals = $this->totals ??= $this->totals();
         $held = $this->sleuthHolds($ids);
         $caps = $this->flagCaps($ids);
         $graceDays = (int) $this->config->get('grace_days');
@@ -209,6 +211,27 @@ class Evaluator
 
         $this->db->table('trust_stats')->upsert($rows, ['user_id'], ['data', 'next_level', 'next_percent', 'computed_at']);
         $this->db->table('users')->whereIn('id', $ids)->update(['trust_checked_at' => $now]);
+    }
+
+    /**
+     * Discussions and posts started in the last 100 days, what Regular's "25%
+     * of" is of. Two counts over the whole forum: done by the scheduled run and
+     * kept for two hours, so a member's quick check never repeats them.
+     *
+     * @return array{topics: int, posts: int}
+     */
+    private function totals(): array
+    {
+        $cached = json_decode((string) $this->settings->get(Config::TOTALS), true);
+
+        if (is_array($cached) && isset($cached['at'], $cached['topics'], $cached['posts']) && Carbon::parse($cached['at'])->gt(Carbon::now()->subHours(2))) {
+            return ['topics' => (int) $cached['topics'], 'posts' => (int) $cached['posts']];
+        }
+
+        $totals = $this->stats->forumTotals();
+        $this->settings->set(Config::TOTALS, json_encode($totals + ['at' => Carbon::now()->toIso8601String()]));
+
+        return $totals;
     }
 
     /** One member, now (a promotion right after reading or posting). */

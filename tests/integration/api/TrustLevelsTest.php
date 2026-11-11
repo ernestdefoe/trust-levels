@@ -302,6 +302,20 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function a_quick_check_uses_the_forum_totals_the_scheduled_run_kept(): void
+    {
+        $this->setting('ernestdefoe-trust-levels.totals', json_encode(['topics' => 40, 'posts' => 400, 'at' => Carbon::now()->toIso8601String()]));
+        $this->app();
+        $this->db()->table('users')->where('id', 4)->update(['trust_level' => 2]);
+
+        $this->app->getContainer()->make(Evaluator::class)->evaluateOne(User::query()->find(4));
+
+        $next = json_decode($this->db()->table('trust_stats')->where('user_id', 4)->value('data'), true)['next'];
+        $posts = array_values(array_filter($next['rows'], fn ($r) => $r['key'] === 'posts_read'))[0];
+        $this->assertSame(100, $posts['need'], '25% of the kept 400, not of the real count');
+    }
+
+    #[Test]
     public function a_quiet_regular_drops_after_the_grace_period_but_a_locked_one_never_moves(): void
     {
         $this->db()->table('users')->where('id', 10)->update(['last_seen_at' => Carbon::now()]);
