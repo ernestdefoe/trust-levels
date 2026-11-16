@@ -47,6 +47,11 @@ class TrustData extends Type
     public function anonymize(): void
     {
         $this->delete();
+        // The anonymous account starts over at New, unlocked and not on hold.
+        resolve(ConnectionInterface::class)->table('users')->where('id', $this->user->id)->update([
+            'trust_level' => 0, 'trust_level_at' => null, 'trust_locked' => false,
+            'trust_silenced_at' => null, 'trust_checked_at' => null,
+        ]);
     }
 
     public function delete(): void

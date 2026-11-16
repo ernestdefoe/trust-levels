@@ -169,6 +169,7 @@ return [
         ])
         ->whenExtensionEnabled('flarum-gdpr', fn () => [
             (new \Flarum\Gdpr\Extend\UserData())->addType(\ErnestDefoe\TrustLevels\Gdpr\TrustData::class),
+            (new Extend\ServiceProvider())->register(\ErnestDefoe\TrustLevels\Gdpr\KeepColumnsValid::class),
         ])
         ->whenExtensionEnabled('ernestdefoe-buzz', fn () => Optional::buzz())
         ->whenExtensionEnabled('ernestdefoe-onramp', fn () => Optional::onramp()),
