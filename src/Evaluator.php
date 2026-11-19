@@ -48,16 +48,6 @@ class Evaluator
     ) {
     }
 
-    /**
-     * Members seen since the last run, members not placed yet, and (with
-     * $all) every Regular, whose 100-day window moves even if they don't.
-     *
-     * One run at a time, whichever schedule (or Run now) started it: $wait
-     * seconds for one already going (the nightly pass waits, so pruning and
-     * Regular drops aren't skipped behind a long hourly run).
-     *
-     * @return int|null members checked, or null when another run held the lock
-     */
     /** Whether a run holds the lock right now (Run now says so instead of queueing a second one). */
     public function running(): bool
     {
@@ -78,6 +68,16 @@ class Evaluator
         return false;
     }
 
+    /**
+     * Members seen since the last run, members not placed yet, and (with
+     * $all) every Regular, whose 100-day window moves even if they don't.
+     *
+     * One run at a time, whichever schedule (or Run now) started it: $wait
+     * seconds for one already going (the nightly pass waits, so pruning and
+     * Regular drops aren't skipped behind a long hourly run).
+     *
+     * @return int|null members checked, or null when another run held the lock
+     */
     public function run(bool $all = false, int $wait = 0): ?int
     {
         $store = $this->cache->getStore();
@@ -172,7 +172,7 @@ class Evaluator
         }
 
         $this->db->table('trust_stats')->upsert($rows, ['user_id'], ['data', 'next_level', 'next_percent', 'computed_at']);
-        $this->db->table('users')->whereIn('id', $ids)->update(['trust_checked_at' => $now]);
+        User::query()->whereIn('id', $ids)->update(['trust_checked_at' => $now]);
     }
 
     /**
@@ -384,7 +384,7 @@ class Evaluator
             ->whereIn('user_id', $ids)
             ->where('type', 'demoted')
             ->where('created_at', '>=', Carbon::now()->subMonths(6))
-            ->where('data', 'like', '%"reason":"flags"%')
+            ->where('reason', 'flags')
             ->get(['user_id', 'to_level']) as $row) {
             $id = (int) $row->user_id;
             $caps[$id] = min($caps[$id] ?? PHP_INT_MAX, (int) $row->to_level);

@@ -7,6 +7,7 @@ use ErnestDefoe\TrustLevels\Access\Exempt;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\Event\Silenced;
 use ErnestDefoe\TrustLevels\Integration\Extensions;
+use ErnestDefoe\TrustLevels\Integration\NewMemberQueue;
 use ErnestDefoe\TrustLevels\LevelWriter;
 use Flarum\Post\CommentPost;
 use Flarum\Post\Event\Deleting as PostDeleting;
@@ -20,13 +21,14 @@ use Illuminate\Database\ConnectionInterface;
 /**
  * Posts the community flags, and what happens to their authors.
  *
- * - Enough different members (level 1+ by default) flag a post: it's hidden
- *   at once. With Docket installed, Docket's crowd moderation does the hiding
- *   (weighted by each reporter's level, see DocketWeights) and this stays out.
+ * - Enough different members (Member, level 2, or above by default) flag a
+ *   post: it's hidden at once. With Docket installed, Docket's crowd moderation
+ *   does the hiding (weighted by each reporter's level, see
+ *   Integration\DocketCrowd) and this stays out.
  * - A post hidden with no one's hand on it (our auto-hide or Docket's) while
- *   flagged silences its author if they're level 0 or 1: they can read, can't
- *   post. Silenced in their first days, with Gatehouse installed, they go back
- *   to its queue instead.
+ *   flagged silences its author if they're level 0 or 1 (by default): they can read, can't
+ *   post. Silenced in their first days, with Gatehouse installed, they also go
+ *   back to its queue.
  * - A moderator hiding or deleting a flagged post upholds its flags; enough
  *   upheld flags in 6 months drops the author a level.
  * - A moderator restoring the post lifts the silence it caused.
@@ -39,6 +41,7 @@ class Spam
         private Exempt $exempt,
         private LevelWriter $writer,
         private Extensions $extensions,
+        private NewMemberQueue $queue,
         private Dispatcher $events,
     ) {
     }
@@ -139,16 +142,15 @@ class Spam
         }
 
         $now = Carbon::now();
-        $this->db->table('users')->where('id', $author->id)->update(['trust_silenced_at' => $now]);
-        $author->setRawAttributes(['trust_silenced_at' => $now] + $author->getAttributes(), true);
+        $author->setAttribute('trust_silenced_at', $now)->save();
         $this->writer->log($author->id, 'silenced', null, null, null, $post->id);
 
         $days = $this->config->spam('gatehouse_days');
 
-        if ($days > 0 && $this->extensions->on('ernestdefoe-gatehouse') && $author->joined_at && $author->joined_at->gt($now->copy()->subDays($days))) {
-            $this->db->table('users')->where('id', $author->id)->update(['gatehouse_status' => 'pending']);
-            // Signed out everywhere: Gatehouse holds a pending account at sign-in.
-            $this->db->table('access_tokens')->where('user_id', $author->id)->delete();
+        // New this week (by default): back to the approval queue, and signed out
+        // everywhere (Gatehouse holds a pending account at sign-in).
+        if ($days > 0 && $author->joined_at && $author->joined_at->gt($now->copy()->subDays($days)) && $this->queue->hold($author)) {
+            $author->accessTokens()->delete();
             $this->writer->log($author->id, 'gatehouse', null, null, null, $post->id);
         }
 
@@ -157,8 +159,7 @@ class Spam
 
     public function unsilence(User $user, ?User $actor): void
     {
-        $this->db->table('users')->where('id', $user->id)->update(['trust_silenced_at' => null]);
-        $user->setRawAttributes(['trust_silenced_at' => null] + $user->getAttributes(), true);
+        $user->setAttribute('trust_silenced_at', null)->save();
         $this->writer->log($user->id, 'unsilenced', null, null, $actor?->id);
     }
 
@@ -182,7 +183,7 @@ class Spam
 
         $since = Carbon::now()->subMonths(6);
         $lastDrop = $this->db->table('trust_events')->where('user_id', $author->id)->where('type', 'demoted')
-            ->where('created_at', '>=', $since)->where('data', 'like', '%"reason":"flags"%')->max('created_at');
+            ->where('created_at', '>=', $since)->where('reason', 'flags')->max('created_at');
 
         $upheld = $this->db->table('trust_events')->where('user_id', $author->id)->where('type', 'flag_upheld')
             ->where('created_at', '>=', $lastDrop ?: $since)

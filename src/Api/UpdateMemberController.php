@@ -46,8 +46,9 @@ class UpdateMemberController implements RequestHandlerInterface
         }
 
         // Nobody changes their own level, lock or hold: a moderator could
-        // otherwise make themselves Leader and take its permissions.
-        if (! $staff || $actor->id === $user->id) {
+        // otherwise make themselves Leader and take its permissions. Nor, unless
+        // they're an admin, another member of staff's.
+        if (! $staff || $actor->id === $user->id || (! $actor->isAdmin() && ($user->isAdmin() || $user->hasPermission('ernestdefoe-trust-levels.manage')))) {
             return Json::error(403, 'permission_denied');
         }
 
@@ -55,7 +56,8 @@ class UpdateMemberController implements RequestHandlerInterface
             return Json::error(403, 'admin_only');
         }
 
-        $this->update($user, $actor, Json::body($request));
+        // All of it or none: a level, lock, note and hold change together.
+        $this->db->transaction(fn () => $this->update($user, $actor, Json::body($request)));
         $user->refresh();
 
         return new JsonResponse(['data' => $this->progress->for($user, $staff)]);

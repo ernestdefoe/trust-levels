@@ -13,6 +13,7 @@ class Provider extends AbstractServiceProvider
     {
         $this->container->singleton(Config::class);
         $this->container->singleton(RememberActor::class);
+        $this->container->bind(Integration\NewMemberQueue::class, Integration\NoQueue::class);
     }
 
     public function boot(Tracker $tracker): void

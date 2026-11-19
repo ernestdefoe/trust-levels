@@ -88,8 +88,7 @@ return [
         ->globalPolicy(GlobalTrustPolicy::class)
         ->modelPolicy(Discussion::class, TrustPolicy::class)
         ->modelPolicy(Post::class, TrustPolicy::class)
-        ->modelPolicy(User::class, TrustPolicy::class)
-        ->modelPolicy('FoF\Polls\Poll', TrustPolicy::class),
+        ->modelPolicy(User::class, TrustPolicy::class),
 
 
     (new Extend\Event())
@@ -117,6 +116,9 @@ return [
         }, ['--all']),
 
     (new Extend\Conditional())
+        ->whenExtensionEnabled('fof-polls', fn () => [
+            (new Extend\Policy())->modelPolicy('FoF\Polls\Poll', TrustPolicy::class),
+        ])
         ->whenExtensionEnabled('flarum-flags', fn () => [
             (new Extend\Event())->listen('Flarum\Flags\Event\Created', [Spam::class, 'flagged']),
         ])
@@ -125,6 +127,7 @@ return [
         ])
         ->whenExtensionEnabled('ernestdefoe-gatehouse', fn () => [
             (new Extend\Event())->listen('Ernestdefoe\Gatehouse\Event\Approved', [Spam::class, 'approvedByGatehouse']),
+            (new Extend\ServiceProvider())->register(\ErnestDefoe\TrustLevels\Integration\GatehouseProvider::class),
         ])
         ->whenExtensionEnabled('flarum-messages', fn () => [
             (new Extend\Event())->listen('Flarum\Messages\DialogMessage\Event\Creating', [Limits::class, 'messageCreating']),

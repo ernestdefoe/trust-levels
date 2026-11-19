@@ -43,7 +43,7 @@ class LevelWriter
         // Only from the level we read: when the hourly run and a member's own
         // quick check promote them at the same moment, the second one changes
         // no row and stops here (no second history row, alert or Buzz post).
-        $changed = $this->db->table('users')->where('id', $user->id)->where('trust_level', $from)
+        $changed = User::query()->whereKey($user->id)->where('trust_level', $from)
             ->update(['trust_level' => $to, 'trust_level_at' => $now]);
 
         if (! $changed) {
@@ -79,6 +79,7 @@ class LevelWriter
             'actor_id' => $actorId,
             'post_id' => $postId,
             'data' => $data ? json_encode($data) : null,
+            'reason' => $data['reason'] ?? null,
             'created_at' => Carbon::now(),
         ]);
     }

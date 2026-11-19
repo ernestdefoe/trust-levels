@@ -7,6 +7,7 @@ use ErnestDefoe\TrustLevels\Names;
 use Flarum\Group\Group;
 use Flarum\Http\RequestUtil;
 use Flarum\Settings\SettingsRepositoryInterface;
+use Illuminate\Contracts\Events\Dispatcher;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -18,7 +19,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 class GroupsController implements RequestHandlerInterface
 {
-    public function __construct(private Config $config, private SettingsRepositoryInterface $settings, private Names $names)
+    public function __construct(private Config $config, private SettingsRepositoryInterface $settings, private Names $names, private Dispatcher $events)
     {
     }
 
@@ -42,6 +43,11 @@ class GroupsController implements RequestHandlerInterface
             $group->is_hidden = true;
             $group->save();
             $raw['groups'][$level] = $group->id;
+
+            // Core's Group\Event\Created, as when a group is made in the admin.
+            foreach ($group->releaseEvents() as $event) {
+                $this->events->dispatch($event);
+            }
         }
 
         $this->settings->set(Config::KEY, json_encode($raw));

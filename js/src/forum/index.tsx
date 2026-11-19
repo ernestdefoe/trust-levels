@@ -9,12 +9,11 @@ import Icon from 'flarum/common/components/Icon';
 import UserControls from 'flarum/forum/utils/UserControls';
 import type Mithril from 'mithril';
 import { NS, levelName } from '../common/levels';
-import TrustModal from './components/TrustModal';
 
 /*
  * forum.js is on every page and stays small: the profile tab (its page is a
- * lazy chunk, see extend.ts), the staff menu item, the "on hold" notice and the composer's
- * link/image counter. Levels are only in the payload for the member themselves
+ * lazy chunk, see extend.ts), the staff menu item (its modal is lazy too),
+ * the "on hold" notice and the composer's link/image counter. Levels are only in the payload for the member themselves
  * and staff, so nothing here shows anyone else's.
  */
 
@@ -58,7 +57,7 @@ app.initializers.add('ernestdefoe/trust-levels', () => {
 
     items.add(
       'trustLevel',
-      <Button icon="fas fa-shield-halved" onclick={() => app.modal.show(TrustModal, { user })}>
+      <Button icon="fas fa-shield-halved" onclick={() => app.modal.show(() => import('./components/TrustModal'), { user })}>
         {app.translator.trans(`${NS}.forum.modal.button`)}
       </Button>
     );

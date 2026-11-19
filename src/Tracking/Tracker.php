@@ -43,32 +43,26 @@ class Tracker
 
         $now = Carbon::now();
         $day = $now->toDateString();
-        $table = $this->db->table('trust_daily');
-        $row = $table->where('user_id', $state->user_id)->where('day', $day)->first(['last_read_at']);
+        $today = fn () => $this->db->table('trust_daily')->where('user_id', $state->user_id)->where('day', $day);
+        $row = $today()->first(['last_read_at']);
 
-        $values = [
-            'posts_read' => min($new - $old, self::MAX_POSTS),
-            'topics_entered' => $old === 0 ? 1 : 0,
-            'read_seconds' => 0,
-            'last_read_at' => $now,
-        ];
+        $posts = min($new - $old, self::MAX_POSTS);
+        $topics = $old === 0 ? 1 : 0;
 
-        if (! $row) {
-            $this->db->table('trust_daily')->insertOrIgnore(['user_id' => $state->user_id, 'day' => $day] + $values);
-
+        // The first read today makes the row. If another tab made it a moment
+        // earlier, the insert is ignored and this read is added to theirs below.
+        if (! $row && $this->db->table('trust_daily')->insertOrIgnore([
+            'user_id' => $state->user_id, 'day' => $day,
+            'posts_read' => $posts, 'topics_entered' => $topics, 'read_seconds' => 0, 'last_read_at' => $now,
+        ])) {
             return;
         }
 
-        if ($row->last_read_at) {
-            $values['read_seconds'] = (int) min(self::MAX_STEP, max(0, $now->getTimestamp() - Carbon::parse($row->last_read_at)->getTimestamp()));
-        }
+        $seconds = $row?->last_read_at
+            ? (int) min(self::MAX_STEP, max(0, $now->getTimestamp() - Carbon::parse($row->last_read_at)->getTimestamp()))
+            : 0;
 
-        $this->db->table('trust_daily')->where('user_id', $state->user_id)->where('day', $day)->update([
-            'posts_read' => $this->db->raw($this->db->getQueryGrammar()->wrap('posts_read').' + '.$values['posts_read']),
-            'topics_entered' => $this->db->raw($this->db->getQueryGrammar()->wrap('topics_entered').' + '.$values['topics_entered']),
-            'read_seconds' => $this->db->raw($this->db->getQueryGrammar()->wrap('read_seconds').' + '.$values['read_seconds']),
-            'last_read_at' => $now,
-        ]);
+        $today()->incrementEach(['posts_read' => $posts, 'topics_entered' => $topics, 'read_seconds' => $seconds], ['last_read_at' => $now]);
     }
 
     /** Called while a member is saved: their first sight today marks the day. */

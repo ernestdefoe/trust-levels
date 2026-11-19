@@ -3,23 +3,25 @@
 namespace ErnestDefoe\TrustLevels\Listener;
 
 use Carbon\Carbon;
-use ErnestDefoe\TrustLevels\Evaluator;
 use ErnestDefoe\TrustLevels\Http\RememberActor;
+use ErnestDefoe\TrustLevels\Job\CheckMember;
 use Flarum\Discussion\Event\UserRead;
 use Flarum\Post\Event\Posted;
 use Flarum\User\User;
+use Illuminate\Contracts\Queue\Queue;
 
 /**
  * Members at New or Basic are checked right after they read or post, at most
  * once every 10 minutes each, so promotions up to Member don't wait for the
- * hourly run and work on hosts with no cron at all. The forum totals come
- * from the scheduled run's cache, so a check is the member's own numbers only.
+ * hourly run and work on hosts with no cron at all. The check itself is a
+ * queued job (CheckMember); the 10 minutes start when it's queued, so a member
+ * reading fast never queues a second one.
  */
 class QuickCheck
 {
     public const EVERY_MINUTES = 10;
 
-    public function __construct(private Evaluator $evaluator, private RememberActor $current)
+    public function __construct(private Queue $queue, private RememberActor $current)
     {
     }
 
@@ -51,7 +53,10 @@ class QuickCheck
             return;
         }
 
-        $this->evaluator->evaluateOne($user);
-        $user->setRawAttributes(['trust_checked_at' => Carbon::now()] + $user->getAttributes(), true);
+        $now = Carbon::now();
+        User::query()->whereKey($user->id)->update(['trust_checked_at' => $now]);
+        $user->setRawAttributes(['trust_checked_at' => $now] + $user->getAttributes(), true);
+
+        $this->queue->push(new CheckMember((int) $user->id));
     }
 }

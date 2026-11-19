@@ -49,7 +49,7 @@ class TrustData extends Type
     {
         $this->delete();
         // The anonymous account starts over at New, unlocked and not on hold.
-        $this->user->getConnection()->table('users')->where('id', $this->user->id)->update([
+        $this->user->newQuery()->whereKey($this->user->id)->update([
             'trust_level' => 0, 'trust_level_at' => null, 'trust_locked' => false,
             'trust_silenced_at' => null, 'trust_checked_at' => null,
         ]);
@@ -63,6 +63,6 @@ class TrustData extends Type
         $db->table('trust_events')->where('user_id', $this->user->id)->delete();
         $db->table('trust_events')->where('actor_id', $this->user->id)->update(['actor_id' => null]);
         // Staff's free-text note about the member goes too.
-        $db->table('users')->where('id', $this->user->id)->update(['trust_note' => null]);
+        $this->user->newQuery()->whereKey($this->user->id)->update(['trust_note' => null]);
     }
 }

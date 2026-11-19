@@ -512,6 +512,16 @@ class TrustLevelsTest extends TestCase
     }
 
     #[Test]
+    public function only_an_admin_changes_another_member_of_staff(): void
+    {
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/1', 5, ['level' => 0])[0], 'a moderator can not lower an admin');
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/1', 5, ['locked' => true])[0], 'or lock one');
+        $this->assertFalse((bool) $this->user(1)->trust_locked);
+        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/5', 1, ['locked' => true])[0], 'an admin can lock a moderator');
+        $this->assertTrue((bool) $this->user(5)->trust_locked);
+    }
+
+    #[Test]
     public function a_moderator_cant_raise_themselves_or_anyone_to_leader(): void
     {
         $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/5', 5, ['level' => 4])[0], 'own account');
