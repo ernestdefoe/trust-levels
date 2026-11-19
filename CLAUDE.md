@@ -13,7 +13,7 @@
 - **Placement:** members who joined before `installed_at` are placed once from history (`Evaluator::estimate`), never below Basic, no alert. Until placed, `Exempt::level` treats them as Basic.
 - **Level groups are virtual** (`InheritPermissions`): nobody is added to them; levels ≤ the member's add the group's permissions. A level can't use Admin/Guest/Member/Mod or a Ladder rung group (`Listener\ValidateSettings`).
 - **Limits only restrict** (`Access\Restrictions`, used by `TrustPolicy` and `GlobalTrustPolicy`, which return FORCE_DENY or null; `Limits\Limits` throws ValidationException). Exempt = admin, `bypassLimits` permission, `exempt_groups`. Links/images/mentions are counted in the parsed XML.
-- **Spam:** our auto-hide only without Docket. Any hide with no actor on a reported post silences a level ≤ `silence_up_to` author; a staff hide/delete of a reported post upholds it. With Docket, `Integration\DocketCrowd` replaces Docket's `Crowd` to weigh reporters by level.
+- **Spam:** our auto-hide only without Docket. Any hide with no actor on a reported post silences a level ≤ `silence_up_to` author; a staff hide/delete of a reported post upholds it. With Docket, `Integration\DocketReporters` replaces Docket's `Crowd\Reporters` (Docket ≥ 1.5; composer conflict below that) to weigh reporters by level.
 - **Only the member and staff see a level.** The user fields are `visible()`-guarded; `/api/trust-levels/users/{id}` 404s for anyone else.
 - Config is ONE JSON setting cleaned by `Config::clean`; defaults live there and in the admin page's `DEFAULTS`/`LIMIT_DEFAULTS` (keep them in step).
 - extend.php reads no class constants outside closures. Buzz/Onramp extenders are built by class name in `Integration\Optional`.
