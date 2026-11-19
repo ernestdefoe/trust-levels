@@ -720,10 +720,19 @@ class TrustLevelsTest extends TestCase
         $move = include __DIR__.'/../../../migrations/2026_11_19_000001_move_trust_state_off_users.php';
         $at = Carbon::parse('2026-10-01 12:00:00');
 
-        // Back to columns on users (down copies the rows back), then change them there.
-        ($move['down'])($schema);
-        $this->assertTrue($schema->hasColumn('users', 'trust_level'));
-        $this->assertFalse($schema->hasTable('trust_states'));
+        // A forum still on 1.0: the values are columns on users and there's no table yet.
+        $schema->table('users', function ($table) {
+            $table->unsignedTinyInteger('trust_level')->default(0);
+            $table->dateTime('trust_level_at')->nullable();
+            $table->boolean('trust_locked')->default(false);
+            $table->string('trust_note', 200)->nullable();
+            $table->dateTime('trust_silenced_at')->nullable();
+            $table->dateTime('trust_checked_at')->nullable();
+        });
+        foreach ($this->db()->table('trust_states')->get() as $row) {
+            $this->db()->table('users')->where('id', $row->user_id)->update(['trust_level' => $row->level, 'trust_level_at' => $row->level_at, 'trust_locked' => $row->locked]);
+        }
+        $schema->drop('trust_states');
         $this->db()->table('users')->where('id', 4)->update(['trust_level' => 3, 'trust_level_at' => $at, 'trust_locked' => true, 'trust_silenced_at' => $at, 'trust_note' => 'Runs the ferry thread']);
 
         ($move['up'])($schema);

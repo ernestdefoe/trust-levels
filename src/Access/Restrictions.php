@@ -30,30 +30,31 @@ class Restrictions
         'rename', 'react', 'vote', 'polls.vote', 'editBio',
     ];
 
+    /** What a level limits for anyone not on hold (a part of SILENCED, so that list is everything this denies). */
+    private const BY_LEVEL = ['fof-upload.upload', 'replyWithoutApproval', 'startWithoutApproval'];
+
     public function __construct(private Config $config, private Exempt $exempt)
     {
     }
 
     public function denies(User $actor, string $ability): bool
     {
-        if ($actor->isGuest()) {
+        // Most abilities are none of ours: decided before anything is read, so a
+        // per-user check another extension makes for every member in a list
+        // (flarum/messages' canSendAnyMessage) costs nothing.
+        if ($actor->isGuest() || ! in_array($ability, self::SILENCED, true) || $this->exempt->is($actor)) {
             return false;
         }
 
-        $silenced = Exempt::silenced($actor);
-        $level = $this->exempt->level($actor);
-
-        $relevant = $silenced
-            ? in_array($ability, self::SILENCED, true)
-            : in_array($ability, ['fof-upload.upload', 'replyWithoutApproval', 'startWithoutApproval'], true);
-
-        if (! $relevant || $this->exempt->is($actor)) {
-            return false;
-        }
-
-        if ($silenced) {
+        if (Exempt::silenced($actor)) {
             return true;
         }
+
+        if (! in_array($ability, self::BY_LEVEL, true)) {
+            return false;
+        }
+
+        $level = $this->exempt->level($actor);
 
         return match ($ability) {
             'fof-upload.upload' => $level < $this->config->get('uploads_from'),

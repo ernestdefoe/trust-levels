@@ -13,8 +13,6 @@ class Provider extends AbstractServiceProvider
     {
         $this->container->singleton(Config::class);
         $this->container->singleton(RememberActor::class);
-        // Holds per-request batches (keyed by the request), so one instance for all.
-        $this->container->singleton(Api\Fields\StateBatch::class);
         $this->container->bind(Integration\NewMemberQueue::class, Integration\NoQueue::class);
     }
 

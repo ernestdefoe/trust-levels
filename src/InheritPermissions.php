@@ -28,7 +28,8 @@ class InheritPermissions
      */
     public function __invoke(User $user, array $groupIds): array
     {
-        if ($user->isGuest() || ! $user->is_email_confirmed) {
+        // No level groups (the default): nothing to add, and nothing read.
+        if ($user->isGuest() || ! $user->is_email_confirmed || ! $this->config->groups()) {
             return $groupIds;
         }
 

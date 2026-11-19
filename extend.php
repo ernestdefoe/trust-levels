@@ -72,6 +72,10 @@ return [
     (new Extend\Model(User::class))
         ->hasOne('trustState', \ErnestDefoe\TrustLevels\TrustState::class, 'user_id'),
 
+    // Members loaded together get their trust rows in one query, on the first read (TrustState::of).
+    (new Extend\Event())
+        ->listen('eloquent.retrieved: '.User::class, [\ErnestDefoe\TrustLevels\Listener\NoteLoadedMembers::class, 'handle']),
+
     (new Extend\ApiResource(UserResource::class))
         ->fields(Api\Fields\UserFields::class),
 

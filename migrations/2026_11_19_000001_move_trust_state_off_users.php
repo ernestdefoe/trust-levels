@@ -4,10 +4,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Schema\Builder;
 
 /*
- * A member's level, lock, hold and staff note move off `users` into Trust
- * Levels' own table (one row per member who has any of them; no row = New,
- * unplaced, unlocked, not on hold). The rows are copied across, then the
- * columns go. Down puts them back the same way.
+ * A member's level, lock, hold and staff note, in Trust Levels' own table
+ * (one row per member who has any of them; no row = New, unplaced, unlocked,
+ * not on hold). Trust Levels 1.0 kept them as columns on `users`: where those
+ * are there, every member's values are copied across and the columns go.
+ * Down drops the table (uninstalling leaves nothing behind).
  */
 return [
     'up' => function (Builder $schema) {
@@ -45,28 +46,6 @@ return [
     },
 
     'down' => function (Builder $schema) {
-        if (! $schema->hasColumn('users', 'trust_level')) {
-            $schema->table('users', function (Blueprint $table) {
-                $table->unsignedTinyInteger('trust_level')->default(0);
-                $table->dateTime('trust_level_at')->nullable();
-                $table->boolean('trust_locked')->default(false);
-                $table->string('trust_note', 200)->nullable();
-                $table->dateTime('trust_silenced_at')->nullable();
-                $table->dateTime('trust_checked_at')->nullable();
-            });
-        }
-
-        $db = $schema->getConnection();
-
-        $db->table('trust_states')->orderBy('user_id')->chunk(500, function ($rows) use ($db) {
-            foreach ($rows as $row) {
-                $db->table('users')->where('id', $row->user_id)->update([
-                    'trust_level' => $row->level, 'trust_level_at' => $row->level_at, 'trust_locked' => $row->locked,
-                    'trust_silenced_at' => $row->silenced_at, 'trust_checked_at' => $row->checked_at, 'trust_note' => $row->note,
-                ]);
-            }
-        });
-
         $schema->dropIfExists('trust_states');
     },
 ];

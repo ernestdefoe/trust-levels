@@ -12,11 +12,11 @@ use Flarum\User\User;
 /**
  * Only the member and staff ever see a level: these fields are left out for
  * everyone else, so a level never reaches another member's browser. The
- * rows of every member in a response load in one query (StateBatch).
+ * rows of every member in a response load in one query (TrustState::of).
  */
 class UserFields
 {
-    public function __construct(private Exempt $exempt, private Config $config, private StateBatch $batch)
+    public function __construct(private Exempt $exempt, private Config $config)
     {
     }
 
@@ -29,13 +29,13 @@ class UserFields
         return [
             Schema\Integer::make('trustLevel')
                 ->visible($canSee)
-                ->get(fn (User $user, Context $context) => $this->batch->read($user, $context, fn (TrustState $s) => $s->level)),
+                ->get(fn (User $user) => TrustState::of($user)->level),
             Schema\Boolean::make('trustLocked')
                 ->visible($canSee)
-                ->get(fn (User $user, Context $context) => $this->batch->read($user, $context, fn (TrustState $s) => $s->locked)),
+                ->get(fn (User $user) => TrustState::of($user)->locked),
             Schema\Boolean::make('trustSilenced')
                 ->visible($canSee)
-                ->get(fn (User $user, Context $context) => $this->batch->read($user, $context, fn (TrustState $s) => $s->silenced_at !== null)),
+                ->get(fn (User $user) => TrustState::of($user)->silenced_at !== null),
             // The composer's live link/image counter: the member's own limits.
             Schema\Arr::make('trustLimits')
                 ->visible(fn (User $user, Context $context) => $context->getActor()->id === $user->id)

@@ -171,4 +171,28 @@ class PoliciesTest extends TestCase
         $this->assertTrue($this->can(5, 'like', $post));
         $this->assertSame(200, $this->send($this->request('GET', '/api/discussions/1', ['authenticatedAs' => 7]))->getStatusCode());
     }
+
+    /**
+     * flarum/messages asks can('sendAnyMessage') of every member in a list, and with
+     * level groups set up, each member's groups depend on their level: their trust
+     * rows still load in one query, not one per member.
+     */
+    #[Test]
+    public function a_list_of_members_loads_their_levels_in_one_query(): void
+    {
+        $this->setting(\ErnestDefoe\TrustLevels\Config::KEY, json_encode(['groups' => [2 => 10]]));
+        $this->database()->table('groups')->insert(['id' => 10, 'name_singular' => 'Trust 2', 'name_plural' => 'Trust 2', 'is_hidden' => 1]);
+        $rows = [];
+        for ($n = 1; $n <= 20; $n++) {
+            $rows[] = ['id' => 100 + $n, 'username' => "many$n", 'email' => "many$n@machine.local", 'password' => 'x', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now()];
+        }
+        $this->database()->table('users')->insert($rows);
+        $this->setTrust(range(101, 110), ['level' => 2, 'level_at' => Carbon::now()]);
+
+        // flarum/testing fails the request if a query repeats per member.
+        $response = $this->send($this->request('GET', '/api/users', ['authenticatedAs' => 5]));
+
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertCount(20, json_decode((string) $response->getBody(), true)['data']);
+    }
 }
