@@ -3,8 +3,9 @@
 use Flarum\Database\Migration;
 
 /*
- * A member's level lives on the member, so every permission check and limit
- * reads it from the actor Flarum has already loaded: no query per request.
+ * Where 1.0 kept a member's level. 2026_11_19_000001 moves these into
+ * Trust Levels' own `trust_states` table and drops them; kept so the
+ * migration history installs the same way everywhere.
  *
  * trust_level_at: when they reached it (null = not placed yet: members who
  * were here before the extension was installed, placed by the first run).

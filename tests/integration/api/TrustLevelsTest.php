@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\Evaluator;
 use ErnestDefoe\TrustLevels\Limits\Limits;
+use ErnestDefoe\TrustLevels\Tests\integration\TrustFixtures;
 use Flarum\Discussion\Discussion;
 use Flarum\Group\Group;
 use Flarum\Post\Post;
@@ -17,6 +18,7 @@ use PHPUnit\Framework\Attributes\Test;
 class TrustLevelsTest extends TestCase
 {
     use RetrievesAuthorizedUsers;
+    use TrustFixtures;
 
     private Carbon $then;
 
@@ -30,7 +32,7 @@ class TrustLevelsTest extends TestCase
         $this->then = Carbon::now()->subDays(30);
         $placed = Carbon::now()->subDays(20);
 
-        $this->prepareDatabase([
+        $this->prepareDatabase($this->trustFixtures([
             User::class => [
                 $this->normalUser(),
                 // New members, joined after the install.
@@ -64,7 +66,7 @@ class TrustLevelsTest extends TestCase
                 ['id' => 5, 'discussion_id' => 1, 'number' => 5, 'user_id' => 4, 'type' => 'comment', 'created_at' => $this->then, 'content' => '<t><p>Five</p></t>'],
                 ['id' => 6, 'discussion_id' => 1, 'number' => 6, 'user_id' => 4, 'type' => 'comment', 'created_at' => $this->then, 'content' => '<t><p>Six</p></t>'],
             ],
-        ]);
+        ]));
     }
 
     protected function tearDown(): void
@@ -92,9 +94,15 @@ class TrustLevelsTest extends TestCase
         return $this->database();
     }
 
+    /** Staff (or anyone) changing a member's trust: PATCH /api/trust-levels/{id}. */
+    private function patchTrust(int $id, ?int $as, array $attributes): array
+    {
+        return $this->api('PATCH', "/api/trust-levels/$id", $as, ['data' => ['type' => 'trust-levels', 'id' => (string) $id, 'attributes' => $attributes]]);
+    }
+
     private function user(int $id): object
     {
-        return $this->db()->table('users')->where('id', $id)->first();
+        return $this->trustRow($id);
     }
 
     private function read(int $as, int $number): int
@@ -204,7 +212,7 @@ class TrustLevelsTest extends TestCase
     {
         $this->app();
         $stale = User::query()->find(3);
-        $this->db()->table('users')->where('id', 3)->update(['trust_level' => 1]);
+        $this->setTrust(3, ['trust_level' => 1]);
 
         $this->app->getContainer()->make(\ErnestDefoe\TrustLevels\LevelWriter::class)->set($stale, 1, 'promoted');
 
@@ -216,7 +224,7 @@ class TrustLevelsTest extends TestCase
     public function members_from_before_the_install_are_placed_never_below_basic_and_not_told(): void
     {
         // User 2 joined before the install; nina (3) joined since and stays New.
-        $this->db()->table('users')->whereIn('id', [2, 3])->update(['trust_level_at' => null, 'trust_level' => 0]);
+        $this->setTrust([2, 3], ['trust_level_at' => null, 'trust_level' => 0]);
         $this->db()->table('users')->where('id', 2)->update(['joined_at' => Carbon::now()->subYear()]);
 
         $this->check();
@@ -295,7 +303,7 @@ class TrustLevelsTest extends TestCase
     public function a_new_signup_gets_no_estimate_from_history(): void
     {
         $db = $this->db();
-        $db->table('users')->where('id', 3)->update(['trust_level_at' => null]);
+        $this->setTrust(3, ['trust_level_at' => null]);
         $db->table('discussion_user')->insert(['user_id' => 3, 'discussion_id' => 1, 'last_read_post_number' => 40, 'last_read_at' => Carbon::now()]);
 
         $this->check();
@@ -309,7 +317,7 @@ class TrustLevelsTest extends TestCase
     {
         $this->setting('ernestdefoe-trust-levels.totals', json_encode(['topics' => 40, 'posts' => 400, 'at' => Carbon::now()->toIso8601String()]));
         $this->app();
-        $this->db()->table('users')->where('id', 4)->update(['trust_level' => 2]);
+        $this->setTrust(4, ['trust_level' => 2]);
 
         $this->app->getContainer()->make(Evaluator::class)->evaluateOne(User::query()->find(4));
 
@@ -323,7 +331,7 @@ class TrustLevelsTest extends TestCase
     {
         $this->setConfig(['req' => [3 => ['flagged_posts' => 0, 'flagged_by' => 0]]]);
         $this->db()->table('trust_events')->insert(['user_id' => 10, 'type' => 'flag_upheld', 'post_id' => 1, 'data' => json_encode(['flaggers' => [6]]), 'created_at' => Carbon::now()]);
-        $this->db()->table('users')->where('id', 10)->update(['last_seen_at' => Carbon::now(), 'trust_level_at' => Carbon::now()]);
+        $this->setTrust(10, ['last_seen_at' => Carbon::now(), 'trust_level_at' => Carbon::now()]);
 
         $this->check();
 
@@ -341,12 +349,12 @@ class TrustLevelsTest extends TestCase
         $this->assertSame(1, $this->db()->table('notifications')->where('user_id', 10)->where('type', 'trustLevelDropped')->count());
 
         // Locked at Leader: nothing moves it.
-        $this->db()->table('users')->where('id', 10)->update(['trust_level' => 4, 'trust_locked' => true]);
+        $this->setTrust(10, ['trust_level' => 4, 'trust_locked' => true]);
         $this->check(true);
         $this->assertSame(4, (int) $this->user(10)->trust_level);
 
         // Within the grace period after promotion: stays Regular.
-        $this->db()->table('users')->where('id', 10)->update(['trust_level' => 3, 'trust_locked' => false, 'trust_level_at' => Carbon::now()->subDays(3)]);
+        $this->setTrust(10, ['trust_level' => 3, 'trust_locked' => false, 'trust_level_at' => Carbon::now()->subDays(3)]);
         $this->check(true);
         $this->assertSame(3, (int) $this->user(10)->trust_level);
     }
@@ -382,7 +390,7 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function members_from_before_the_install_arent_held_to_new_limits_before_their_first_check(): void
     {
-        $this->db()->table('users')->where('id', 2)->update(['trust_level_at' => null, 'trust_level' => 0, 'joined_at' => Carbon::now()->subYear()]);
+        $this->setTrust(2, ['trust_level_at' => null, 'trust_level' => 0, 'joined_at' => Carbon::now()->subYear()]);
 
         [$status] = $this->reply(2, 'http://a.example http://b.example http://c.example');
         $this->assertSame(201, $status);
@@ -420,9 +428,9 @@ class TrustLevelsTest extends TestCase
         $this->assertSame(200, $this->api('GET', '/api/discussions/1', 3)[0]);
 
         // A moderator lifts it.
-        [$status, $body] = $this->api('POST', '/api/trust-levels/users/3', 5, ['silenced' => false]);
+        [$status, $body] = $this->patchTrust(3, 5, ['silenced' => false]);
         $this->assertSame(200, $status);
-        $this->assertFalse($body['data']['silenced']);
+        $this->assertFalse($body['data']['attributes']['silenced']);
         $this->assertNull($this->user(3)->trust_silenced_at);
     }
 
@@ -430,7 +438,7 @@ class TrustLevelsTest extends TestCase
     public function reporters_from_before_the_install_count_as_basic_before_their_first_check(): void
     {
         $this->setConfig(['spam' => ['flagger_level' => 1]]);
-        $this->db()->table('users')->whereIn('id', [6, 7, 8])->update(['trust_level' => 0, 'trust_level_at' => null, 'joined_at' => Carbon::now()->subYear()]);
+        $this->setTrust([6, 7, 8], ['trust_level' => 0, 'trust_level_at' => null, 'joined_at' => Carbon::now()->subYear()]);
 
         foreach ([6, 7, 8] as $flagger) {
             $this->assertSame(201, $this->flag($flagger, 3));
@@ -473,16 +481,16 @@ class TrustLevelsTest extends TestCase
         [, $staff] = $this->api('GET', '/api/users/4', 5);
         $this->assertSame(1, $staff['data']['attributes']['trustLevel']);
 
-        $this->assertSame(404, $this->api('GET', '/api/trust-levels/users/4', 3)[0]);
-        $this->assertSame(200, $this->api('GET', '/api/trust-levels/users/4', 4)[0]);
-        $this->assertSame(200, $this->api('GET', '/api/trust-levels/users/4', 5)[0]);
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/4', 4, ['level' => 4])[0]);
+        $this->assertSame(404, $this->api('GET', '/api/trust-levels/4', 3)[0]);
+        $this->assertSame(200, $this->api('GET', '/api/trust-levels/4', 4)[0]);
+        $this->assertSame(200, $this->api('GET', '/api/trust-levels/4', 5)[0]);
+        $this->assertSame(403, $this->patchTrust(4, 4, ['level' => 4])[0]);
     }
 
     #[Test]
     public function a_member_set_above_their_numbers_still_sees_the_next_level(): void
     {
-        $this->db()->table('users')->where('id', 3)->update(['trust_level' => 2, 'last_seen_at' => Carbon::now()]);
+        $this->setTrust(3, ['trust_level' => 2, 'last_seen_at' => Carbon::now()]);
         $this->check();
 
         $next = json_decode($this->db()->table('trust_stats')->where('user_id', 3)->value('data'), true)['next'];
@@ -493,20 +501,20 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function staff_set_and_lock_a_level(): void
     {
-        [$status, $body] = $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 3, 'locked' => true, 'note' => 'Runs the ferry thread']);
+        [$status, $body] = $this->patchTrust(4, 5, ['level' => 3, 'locked' => true, 'note' => 'Runs the ferry thread']);
         $this->assertSame(200, $status);
-        $this->assertSame(3, $body['data']['level']);
-        $this->assertTrue($body['data']['locked']);
-        $this->assertSame('Runs the ferry thread', $body['data']['note']);
+        $this->assertSame(3, $body['data']['attributes']['level']);
+        $this->assertTrue($body['data']['attributes']['locked']);
+        $this->assertSame('Runs the ferry thread', $body['data']['attributes']['note']);
         $this->assertSame(1, $this->db()->table('trust_events')->where('user_id', 4)->where('type', 'locked')->count());
     }
 
     #[Test]
     public function locking_a_member_who_isnt_placed_yet_places_them(): void
     {
-        $this->db()->table('users')->where('id', 2)->update(['trust_level_at' => null, 'trust_level' => 0, 'joined_at' => Carbon::now()->subYear()]);
+        $this->setTrust(2, ['trust_level_at' => null, 'trust_level' => 0, 'joined_at' => Carbon::now()->subYear()]);
 
-        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/2', 5, ['locked' => true])[0]);
+        $this->assertSame(200, $this->patchTrust(2, 5, ['locked' => true])[0]);
         $this->assertNotNull($this->user(2)->trust_level_at);
         $this->assertSame(1, (int) $this->user(2)->trust_level, 'from before the install: locked at Basic, not New');
     }
@@ -514,44 +522,44 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function only_an_admin_changes_another_member_of_staff(): void
     {
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/1', 5, ['level' => 0])[0], 'a moderator can not lower an admin');
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/1', 5, ['locked' => true])[0], 'or lock one');
+        $this->assertSame(403, $this->patchTrust(1, 5, ['level' => 0])[0], 'a moderator can not lower an admin');
+        $this->assertSame(403, $this->patchTrust(1, 5, ['locked' => true])[0], 'or lock one');
         $this->assertFalse((bool) $this->user(1)->trust_locked);
-        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/5', 1, ['locked' => true])[0], 'an admin can lock a moderator');
+        $this->assertSame(200, $this->patchTrust(5, 1, ['locked' => true])[0], 'an admin can lock a moderator');
         $this->assertTrue((bool) $this->user(5)->trust_locked);
     }
 
     #[Test]
     public function a_moderator_cant_raise_themselves_or_anyone_to_leader(): void
     {
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/5', 5, ['level' => 4])[0], 'own account');
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/5', 5, ['locked' => true])[0], 'own account');
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 4])[0], 'Leader is for admins');
+        $this->assertSame(403, $this->patchTrust(5, 5, ['level' => 4])[0], 'own account');
+        $this->assertSame(403, $this->patchTrust(5, 5, ['locked' => true])[0], 'own account');
+        $this->assertSame(403, $this->patchTrust(4, 5, ['level' => 4])[0], 'Leader is for admins');
         $this->assertSame(1, (int) $this->user(5)->trust_level);
-        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/4', 1, ['level' => 4])[0]);
+        $this->assertSame(200, $this->patchTrust(4, 1, ['level' => 4])[0]);
         $this->assertSame(4, (int) $this->user(4)->trust_level);
     }
 
     #[Test]
     public function a_moderator_cant_hand_out_a_level_groups_permissions(): void
     {
-        $this->prepareDatabase([
+        $this->prepareDatabase($this->trustFixtures([
             Group::class => [['id' => 11, 'name_singular' => 'Trust 2', 'name_plural' => 'Trust 2', 'is_hidden' => 1]],
             'group_permission' => [['permission' => 'trust.test', 'group_id' => 11]],
-        ]);
+        ]));
         $this->setConfig(['groups' => [2 => 11]]);
 
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/3', 5, ['level' => 2])[0]);
-        $this->assertSame(200, $this->api('POST', '/api/trust-levels/users/4', 5, ['level' => 0])[0], 'lowering is fine');
+        $this->assertSame(403, $this->patchTrust(3, 5, ['level' => 2])[0]);
+        $this->assertSame(200, $this->patchTrust(4, 5, ['level' => 0])[0], 'lowering is fine');
     }
 
     #[Test]
     public function a_level_group_gives_its_permissions_to_that_level_and_above(): void
     {
-        $this->prepareDatabase([
+        $this->prepareDatabase($this->trustFixtures([
             Group::class => [['id' => 10, 'name_singular' => 'Trust 1', 'name_plural' => 'Trust 1', 'is_hidden' => 1]],
             'group_permission' => [['permission' => 'trust.test', 'group_id' => 10]],
-        ]);
+        ]));
         $this->setConfig(['groups' => [1 => 10]]);
         $this->app();
 
@@ -564,12 +572,12 @@ class TrustLevelsTest extends TestCase
     #[Test]
     public function a_member_from_before_the_install_has_basics_group_before_their_first_check(): void
     {
-        $this->prepareDatabase([
+        $this->prepareDatabase($this->trustFixtures([
             Group::class => [['id' => 10, 'name_singular' => 'Trust 1', 'name_plural' => 'Trust 1', 'is_hidden' => 1]],
             'group_permission' => [['permission' => 'trust.test', 'group_id' => 10]],
-        ]);
+        ]));
         $this->setConfig(['groups' => [1 => 10]]);
-        $this->db()->table('users')->where('id', 2)->update(['trust_level' => 0, 'trust_level_at' => null, 'joined_at' => Carbon::now()->subYear()]);
+        $this->setTrust(2, ['trust_level' => 0, 'trust_level_at' => null, 'joined_at' => Carbon::now()->subYear()]);
 
         $this->assertTrue(User::query()->find(2)->hasPermission('trust.test'));
     }
@@ -590,14 +598,14 @@ class TrustLevelsTest extends TestCase
 
         [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
         $this->assertSame(200, $status);
-        $this->assertTrue($body['data']['busy']);
-        $this->assertFalse($body['data']['queued'], 'no second run is queued behind one already going');
+        $this->assertTrue($body['meta']['busy']);
+        $this->assertFalse($body['meta']['queued'], 'no second run is queued behind one already going');
 
         $lock->release();
         [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
         $this->assertSame(202, $status);
-        $this->assertFalse($body['data']['busy']);
-        $this->assertTrue($body['data']['queued']);
+        $this->assertFalse($body['meta']['busy']);
+        $this->assertTrue($body['meta']['queued']);
     }
 
     #[Test]
@@ -623,13 +631,15 @@ class TrustLevelsTest extends TestCase
             $rows[] = ['id' => 2000 + $n, 'discussion_id' => 1, 'number' => 2000 + $n, 'user_id' => 3, 'type' => 'comment', 'created_at' => $this->then, 'content' => '<t><p>spam</p></t>'];
         }
         $this->db()->table('posts')->insert($rows);
-        $this->db()->table('users')->where('id', 3)->update(['trust_silenced_at' => Carbon::now()]);
+        $this->setTrust(3, ['trust_silenced_at' => Carbon::now()]);
 
-        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/3/spam', 4)[0], 'members can not');
-        $this->assertSame(404, $this->api('POST', '/api/trust-levels/users/1/spam', 5)[0], 'never on staff');
-
+        $this->app();
         $this->app->getContainer()->instance('flarum.queue.connection', $fake = new \Illuminate\Support\Testing\Fakes\QueueFake($this->app->getContainer()));
-        [$status] = $this->api('POST', '/api/trust-levels/users/3/spam', 5);
+
+        $this->assertSame(404, $this->api('POST', '/api/trust-levels/3/spam', 4)[0], 'members can not (it does not exist for them)');
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/1/spam', 5)[0], 'never on staff');
+
+        [$status] = $this->api('POST', '/api/trust-levels/3/spam', 5);
 
         $this->assertSame(202, $status);
         $this->assertSame(251, $this->db()->table('posts')->where('user_id', 3)->whereNull('hidden_at')->count(), 'nothing hidden inside the request');
@@ -650,9 +660,9 @@ class TrustLevelsTest extends TestCase
     {
         [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
         $this->assertSame(202, $status, 'queued (the test queue is sync, so it has run)');
-        $this->assertSame($this->db()->table('users')->count(), array_sum($body['data']['counts']));
-        $this->assertSame(1, $body['data']['counts'][3]);
-        $this->assertFalse($body['data']['stale']);
+        $this->assertSame($this->db()->table('users')->count(), array_sum($body['meta']['counts']));
+        $this->assertSame(1, $body['meta']['counts'][3]);
+        $this->assertFalse($body['meta']['stale']);
         $this->assertSame(403, $this->api('GET', '/api/trust-levels/dashboard', 5)[0]);
     }
 
@@ -673,5 +683,59 @@ class TrustLevelsTest extends TestCase
         foreach ($blueprint->getEmailViews() as $name) {
             $this->assertNotSame('', $view->make($name, ['blueprint' => $blueprint])->render());
         }
+    }
+
+    #[Test]
+    public function staff_listing_many_members_loads_their_levels_in_one_query(): void
+    {
+        $rows = [];
+        for ($n = 1; $n <= 20; $n++) {
+            $rows[] = ['id' => 100 + $n, 'username' => "many$n", 'email' => "many$n@machine.local", 'password' => 'x', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now()];
+        }
+        $this->db()->table('users')->insert($rows);
+        $this->setTrust(range(101, 105), ['level' => 2, 'level_at' => Carbon::now()]);
+
+        // flarum/testing fails the request if a query repeats per member.
+        [$status, $body] = $this->api('GET', '/api/users', 1);
+
+        $this->assertSame(200, $status);
+        $levels = array_column(array_column($body['data'], 'attributes'), 'trustLevel', 'username');
+        $this->assertSame(2, $levels['many1']);
+        $this->assertCount(20, $body['data']);
+        $this->assertSame(0, $levels['many10'], 'no row: New');
+    }
+
+    #[Test]
+    public function the_move_off_users_keeps_every_level_lock_hold_and_note(): void
+    {
+        $this->app();
+
+        // MySQL commits on every schema change, so the test's rows couldn't be rolled
+        // back afterwards; the move runs there on dev's MariaDB, with real members.
+        if ($this->db()->getDriverName() === 'mysql') {
+            $this->markTestSkipped('MySQL commits DDL; covered on PostgreSQL, SQLite and dev.');
+        }
+
+        $schema = $this->db()->getSchemaBuilder();
+        $move = include __DIR__.'/../../../migrations/2026_11_19_000001_move_trust_state_off_users.php';
+        $at = Carbon::parse('2026-10-01 12:00:00');
+
+        // Back to columns on users (down copies the rows back), then change them there.
+        ($move['down'])($schema);
+        $this->assertTrue($schema->hasColumn('users', 'trust_level'));
+        $this->assertFalse($schema->hasTable('trust_states'));
+        $this->db()->table('users')->where('id', 4)->update(['trust_level' => 3, 'trust_level_at' => $at, 'trust_locked' => true, 'trust_silenced_at' => $at, 'trust_note' => 'Runs the ferry thread']);
+
+        ($move['up'])($schema);
+
+        $this->assertFalse($schema->hasColumn('users', 'trust_level'));
+        $state = $this->db()->table('trust_states')->where('user_id', 4)->first();
+        $this->assertSame(3, (int) $state->level);
+        $this->assertTrue((bool) $state->locked);
+        $this->assertSame($at->toDateTimeString(), Carbon::parse($state->level_at)->toDateTimeString());
+        $this->assertNotNull($state->silenced_at);
+        $this->assertSame('Runs the ferry thread', $state->note);
+        $this->assertSame(2, (int) $this->db()->table('trust_states')->where('user_id', 6)->value('level'), 'the other rows came back too');
+        $this->assertNull($this->db()->table('trust_states')->where('user_id', 1)->first(), 'no row for a member with nothing set');
     }
 }

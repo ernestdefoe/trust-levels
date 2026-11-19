@@ -48,16 +48,16 @@ export default class TrustLevelsPage extends ExtensionPage<ExtensionPageAttrs> {
     this.running = run;
 
     return app
-      .request<{ data: Dashboard }>({
+      .request<{ meta: Dashboard }>({
         method: run ? 'POST' : 'GET',
         url: app.forum.attribute('apiUrl') + (run ? '/trust-levels/run' : '/trust-levels/dashboard'),
       })
       .then((r) => {
         const before = this.dashboard?.lastRun;
-        this.dashboard = r.data;
-        if (run && r.data.busy) app.alerts.show({ type: 'warning' }, t('dashboard.busy'));
+        this.dashboard = r.meta;
+        if (run && r.meta.busy) app.alerts.show({ type: 'warning' }, t('dashboard.busy'));
         // Run now is queued: with a queue worker it finishes later, so check back until it has.
-        if (run && r.data.queued && r.data.lastRun === before) this.waitForRun(before);
+        if (run && r.meta.queued && r.meta.lastRun === before) this.waitForRun(before);
       })
       .finally(() => {
         this.running = this.waiting;
@@ -70,10 +70,10 @@ export default class TrustLevelsPage extends ExtensionPage<ExtensionPageAttrs> {
 
     setTimeout(() => {
       app
-        .request<{ data: Dashboard }>({ method: 'GET', url: app.forum.attribute('apiUrl') + '/trust-levels/dashboard' })
+        .request<{ meta: Dashboard }>({ method: 'GET', url: app.forum.attribute('apiUrl') + '/trust-levels/dashboard' })
         .then((r) => {
-          this.dashboard = r.data;
-          if (r.data.lastRun === before && tries > 1) return this.waitForRun(before, tries - 1);
+          this.dashboard = r.meta;
+          if (r.meta.lastRun === before && tries > 1) return this.waitForRun(before, tries - 1);
           this.waiting = this.running = false;
         })
         .catch(() => {
@@ -174,9 +174,9 @@ export default class TrustLevelsPage extends ExtensionPage<ExtensionPageAttrs> {
 
   createGroups() {
     app
-      .request<{ data: { groups: Record<number, number | null> } }>({ method: 'POST', url: app.forum.attribute('apiUrl') + '/trust-levels/groups' })
+      .request<{ meta: { groups: Record<number, number | null> } }>({ method: 'POST', url: app.forum.attribute('apiUrl') + '/trust-levels/groups' })
       .then((r) => {
-        this.config.groups = r.data.groups;
+        this.config.groups = r.meta.groups;
         app.data.settings[KEY] = JSON.stringify(this.config);
         // The new groups, for the selects.
         app.store.find('groups').then(() => m.redraw());

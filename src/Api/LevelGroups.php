@@ -5,28 +5,22 @@ namespace ErnestDefoe\TrustLevels\Api;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\Names;
 use Flarum\Group\Group;
-use Flarum\Http\RequestUtil;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Contracts\Events\Dispatcher;
-use Laminas\Diactoros\Response\JsonResponse;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * POST /api/trust-levels/groups: create a hidden group for each level that
- * has none ("Trust 2 · Member"), and tie it to the level. Admins only.
+ * "Create level groups": a hidden group for each level that has none
+ * ("Trust 2 · Member"), tied to the level.
  */
-class GroupsController implements RequestHandlerInterface
+class LevelGroups
 {
     public function __construct(private Config $config, private SettingsRepositoryInterface $settings, private Names $names, private Dispatcher $events)
     {
     }
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    /** @return array<int, int|null> each level's group */
+    public function create(): array
     {
-        RequestUtil::getActor($request)->assertAdmin();
-
         $all = $this->config->all();
         $raw = json_decode((string) $this->settings->get(Config::KEY), true) ?: [];
 
@@ -53,6 +47,6 @@ class GroupsController implements RequestHandlerInterface
         $this->settings->set(Config::KEY, json_encode($raw));
         $this->config->refresh();
 
-        return new JsonResponse(['data' => ['groups' => $this->config->all()['groups']]]);
+        return $this->config->all()['groups'];
     }
 }

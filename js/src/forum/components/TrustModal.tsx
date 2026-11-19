@@ -7,6 +7,7 @@ import type User from 'flarum/common/models/User';
 import type Mithril from 'mithril';
 import { NS, MAX, levelName } from '../../common/levels';
 import type { Progress } from './TrustPage';
+import { loadProgress, saveProgress } from '../../common/TrustLevel';
 
 interface Attrs extends IFormModalAttrs {
   user: User;
@@ -32,14 +33,16 @@ export default class TrustModal extends FormModal<Attrs> {
     this.note = Stream(this.progress?.note || '');
 
     if (!this.progress) {
-      app
-        .request<{ data: Progress }>({ method: 'GET', url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.attrs.user.id()}` })
-        .then((r) => {
-          this.progress = r.data;
-          this.level = r.data.level;
-          this.locked = r.data.locked;
-          this.note(r.data.note || '');
+      loadProgress(this.attrs.user.id()!)
+        .then((progress) => {
+          this.progress = progress;
+          this.level = progress.level;
+          this.locked = progress.locked;
+          this.note(progress.note || '');
           m.redraw();
+        })
+        .catch(() => {
+          // The store already showed the alert; the form still works from the user's own fields.
         });
     }
   }
@@ -114,19 +117,14 @@ export default class TrustModal extends FormModal<Attrs> {
     e.preventDefault();
     this.loading = true;
 
-    app
-      .request<{ data: Progress }>({
-        method: 'POST',
-        url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.attrs.user.id()}`,
-        body: { level: this.level, locked: this.locked, note: this.note() },
-      })
-      .then((r) => {
-        this.attrs.user.pushAttributes({ trustLevel: r.data.level, trustLocked: r.data.locked });
-        this.attrs.onsave?.(r.data);
+    saveProgress(this.attrs.user.id()!, { level: this.level, locked: this.locked, note: this.note() })
+      .then((progress) => {
+        this.attrs.user.pushAttributes({ trustLevel: progress.level, trustLocked: progress.locked });
+        this.attrs.onsave?.(progress);
         this.hide();
       })
       .catch(() => {
-        // app.request already showed the alert; the modal stays open to try again.
+        // The store already showed the alert; the modal stays open to try again.
       })
       .finally(() => {
         this.loading = false;

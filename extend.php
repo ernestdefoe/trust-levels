@@ -64,16 +64,13 @@ return [
 
     (new Extend\Middleware('api'))->add(RememberActor::class),
 
-    // Plain handlers, not a JSON:API resource: a member's level and progress go
-    // only to the member and staff (everyone else gets a 404, which a user
-    // include can't do), and the rest are actions or an aggregate dashboard.
-    (new Extend\Routes('api'))
-        ->get('/trust-levels/users/{id:\d+}', 'trust-levels.member', Api\MemberController::class)
-        ->post('/trust-levels/users/{id:\d+}', 'trust-levels.member.update', Api\UpdateMemberController::class)
-        ->post('/trust-levels/users/{id:\d+}/spam', 'trust-levels.member.spam', Api\SpamController::class)
-        ->get('/trust-levels/dashboard', 'trust-levels.dashboard', Api\DashboardController::class)
-        ->post('/trust-levels/run', 'trust-levels.run', Api\RunController::class)
-        ->post('/trust-levels/groups', 'trust-levels.groups', Api\GroupsController::class),
+    // A member's level and progress (the member and staff only), Confirm spam,
+    // and the admin dashboard, Run now and Create level groups.
+    new Extend\ApiResource(Api\TrustStateResource::class),
+
+    // A member's level, lock and hold: Trust Levels' own row, never columns on users.
+    (new Extend\Model(User::class))
+        ->hasOne('trustState', \ErnestDefoe\TrustLevels\TrustState::class, 'user_id'),
 
     (new Extend\ApiResource(UserResource::class))
         ->fields(Api\Fields\UserFields::class),
@@ -134,7 +131,6 @@ return [
         ])
         ->whenExtensionEnabled('flarum-gdpr', fn () => [
             (new \Flarum\Gdpr\Extend\UserData())->addType(\ErnestDefoe\TrustLevels\Gdpr\TrustData::class),
-            (new Extend\ServiceProvider())->register(\ErnestDefoe\TrustLevels\Gdpr\KeepColumnsValid::class),
         ])
         ->whenExtensionEnabled('ernestdefoe-docket', fn () => [
             (new Extend\ServiceProvider())->register(\ErnestDefoe\TrustLevels\Integration\DocketProvider::class),

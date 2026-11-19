@@ -9,6 +9,7 @@ import extractText from 'flarum/common/utils/extractText';
 import type Mithril from 'mithril';
 import { NS, MAX, Row, levelName } from '../../common/levels';
 import Rows from './Rows';
+import { loadProgress, saveProgress } from '../../common/TrustLevel';
 import TrustModal from './TrustModal';
 
 export interface Progress {
@@ -81,14 +82,10 @@ export default class TrustPage extends UserPage {
   }
 
   load() {
-    app
-      .request<{ data: Progress }>({
-        method: 'GET',
-        url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.user!.id()}`,
-        errorHandler: () => {},
-      })
-      .then((r) => {
-        this.progress = r.data;
+    // A failed load shows "unavailable" on the page instead of an alert.
+    loadProgress(this.user!.id()!, () => {})
+      .then((progress) => {
+        this.progress = progress;
         m.redraw();
       })
       .catch(() => {
@@ -97,14 +94,13 @@ export default class TrustPage extends UserPage {
       });
   }
 
-  update(body: Record<string, unknown>) {
+  update(body: Parameters<typeof saveProgress>[1]) {
     this.busy = true;
 
-    return app
-      .request<{ data: Progress }>({ method: 'POST', url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.user!.id()}`, body })
-      .then((r) => {
-        this.progress = r.data;
-        this.user!.pushAttributes({ trustLevel: r.data.level, trustLocked: r.data.locked, trustSilenced: r.data.silenced });
+    return saveProgress(this.user!.id()!, body)
+      .then((progress) => {
+        this.progress = progress;
+        this.user!.pushAttributes({ trustLevel: progress.level, trustLocked: progress.locked, trustSilenced: progress.silenced });
       })
       .finally(() => {
         this.busy = false;
@@ -278,7 +274,7 @@ export default class TrustPage extends UserPage {
 
     this.busy = true;
     app
-      .request({ method: 'POST', url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.user!.id()}/spam` })
+      .request({ method: 'POST', url: `${app.forum.attribute('apiUrl')}/trust-levels/${this.user!.id()}/spam` })
       .then(() => {
         // Hiding their posts runs in the background (it can be hundreds).
         app.alerts.show({ type: 'success' }, t('confirm_spam_queued'));

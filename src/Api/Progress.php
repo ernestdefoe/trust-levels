@@ -5,6 +5,7 @@ namespace ErnestDefoe\TrustLevels\Api;
 use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\Integration\Extensions;
+use ErnestDefoe\TrustLevels\TrustState;
 use Flarum\User\User;
 use Illuminate\Database\ConnectionInterface;
 
@@ -21,9 +22,11 @@ class Progress
     {
     }
 
+    /** @return array<string, mixed> the Trust level tab */
     public function for(User $user, bool $staff): array
     {
-        $level = (int) $user->getAttribute('trust_level');
+        $state = TrustState::of($user);
+        $level = $state->level;
         $row = $this->db->table('trust_stats')->where('user_id', $user->id)->first();
         $data = $row ? (array) json_decode((string) $row->data, true) : [];
 
@@ -40,11 +43,11 @@ class Progress
 
         return [
             'level' => $level,
-            'levelAt' => $this->date($user->getAttribute('trust_level_at')),
+            'levelAt' => $this->date($state->level_at),
             'joinedAt' => $this->date($user->joined_at),
-            'locked' => (bool) $user->getAttribute('trust_locked'),
-            'silenced' => (bool) $user->getAttribute('trust_silenced_at'),
-            'note' => $staff ? $user->getAttribute('trust_note') : null,
+            'locked' => $state->locked,
+            'silenced' => $state->silenced_at !== null,
+            'note' => $staff ? $state->note : null,
             'computedAt' => $row?->computed_at ? $this->date($row->computed_at) : null,
             'next' => $next,
             'keep' => $level === 3 ? ($data['keep'] ?? null) : null,

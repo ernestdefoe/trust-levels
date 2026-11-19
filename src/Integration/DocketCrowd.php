@@ -8,8 +8,8 @@ use ErnestDefoe\TrustLevels\Access\Exempt;
 use Flarum\Extension\ExtensionManager;
 use Flarum\Notification\NotificationSyncer;
 use Flarum\Settings\SettingsRepositoryInterface;
+use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
-use Illuminate\Database\ConnectionInterface;
 
 /**
  * Docket's crowd moderation, with each reporter weighed by their level.
@@ -17,7 +17,7 @@ use Illuminate\Database\ConnectionInterface;
  * Bound in place of Docket's own Crowd only while Docket is enabled (this
  * file is never loaded otherwise). Level 0 counts 0.5, level 4 counts 1.5;
  * with Docket's own track-record weighting on, the two are averaged. One
- * query for all the reporters of a report.
+ * query for all the reporters of a report (and one for their levels).
  */
 class DocketCrowd extends Crowd
 {
@@ -30,7 +30,6 @@ class DocketCrowd extends Crowd
         NotificationSyncer $notifications,
         LinkedAccounts $links,
         private Exempt $exempt,
-        private ConnectionInterface $db,
     ) {
         parent::__construct($settings, $extensions, $events, $notifications, $links);
     }
@@ -44,12 +43,10 @@ class DocketCrowd extends Crowd
         }
 
         $trackRecord = (bool) $this->setting('trust');
-        $rows = $this->db->table('users')->whereIn('id', $userIds)->get(['id', 'trust_level', 'trust_level_at', 'joined_at']);
-
-        foreach ($rows as $row) {
-            $id = $row->id;
-            $byLevel = self::LEVEL_WEIGHTS[min(4, $this->exempt->effective((int) $row->trust_level, $row->trust_level_at, $row->joined_at))];
-            $weights[(int) $id] = $trackRecord ? ($weights[(int) $id] + $byLevel) / 2 : $byLevel;
+        foreach (User::query()->whereIn('id', $userIds)->with('trustState')->get() as $user) {
+            $id = (int) $user->id;
+            $byLevel = self::LEVEL_WEIGHTS[min(4, $this->exempt->level($user))];
+            $weights[$id] = $trackRecord ? ($weights[$id] + $byLevel) / 2 : $byLevel;
         }
 
         return $weights;

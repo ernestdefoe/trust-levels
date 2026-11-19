@@ -10,7 +10,7 @@ use Flarum\User\User;
  * (abilities with no model) and TrustPolicy (discussions, posts, users, polls).
  * Only ever a deny, so it never grants what the permission grid doesn't; the
  * policies run before core's admin check, so exempt members are skipped here.
- * Costs nothing: the level and silence are columns on the actor.
+ * Reads the actor's trust row, loaded once per request.
  */
 class Restrictions
 {

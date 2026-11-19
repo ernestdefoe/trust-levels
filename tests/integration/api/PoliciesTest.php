@@ -3,6 +3,7 @@
 namespace ErnestDefoe\TrustLevels\Tests\integration\api;
 
 use Carbon\Carbon;
+use ErnestDefoe\TrustLevels\Tests\integration\TrustFixtures;
 use Flarum\Discussion\Discussion;
 use Flarum\Group\Group;
 use Flarum\Post\Post;
@@ -19,6 +20,7 @@ use PHPUnit\Framework\Attributes\Test;
 class PoliciesTest extends TestCase
 {
     use RetrievesAuthorizedUsers;
+    use TrustFixtures;
 
     protected function setUp(): void
     {
@@ -28,7 +30,7 @@ class PoliciesTest extends TestCase
 
         $at = Carbon::now()->subDays(3);
 
-        $this->prepareDatabase([
+        $this->prepareDatabase($this->trustFixtures([
             User::class => [
                 $this->normalUser(),
                 ['id' => 3, 'username' => 'nina', 'email' => 'nina@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 0, 'trust_level_at' => $at],
@@ -51,7 +53,7 @@ class PoliciesTest extends TestCase
             Post::class => [
                 ['id' => 1, 'discussion_id' => 1, 'number' => 1, 'user_id' => 2, 'type' => 'comment', 'created_at' => $at, 'content' => '<t><p>One</p></t>', 'is_approved' => 1],
             ],
-        ]);
+        ]));
     }
 
     private function can(int $userId, string $ability, $model = null): bool
