@@ -6,19 +6,14 @@ import LinkButton from 'flarum/common/components/LinkButton';
 import Button from 'flarum/common/components/Button';
 import Alert from 'flarum/common/components/Alert';
 import Icon from 'flarum/common/components/Icon';
-import UserPageResolver from 'flarum/forum/resolvers/UserPageResolver';
 import UserControls from 'flarum/forum/utils/UserControls';
 import type Mithril from 'mithril';
 import { NS, levelName } from '../common/levels';
-import TrustPage from './components/TrustPage';
 import TrustModal from './components/TrustModal';
-import { LevelReachedNotification, LevelDroppedNotification } from './components/LevelNotification';
-
-declare const m: Mithril.Static;
 
 /*
- * forum.js is on every page and stays small: the profile tab and its route,
- * the two alerts, the staff menu item, the "on hold" notice and the composer's
+ * forum.js is on every page and stays small: the profile tab (its page is a
+ * lazy chunk, see extend.ts), the staff menu item, the "on hold" notice and the composer's
  * link/image counter. Levels are only in the payload for the member themselves
  * and staff, so nothing here shows anyone else's.
  */
@@ -32,12 +27,9 @@ function countLinks(text: string): { links: number; images: number } {
   return { links, images };
 }
 
+export { default as extend } from './extend';
+
 app.initializers.add('ernestdefoe/trust-levels', () => {
-  app.routes['user.trust'] = { path: '/u/:username/trust', component: TrustPage, resolverClass: UserPageResolver } as any;
-
-  app.notificationComponents.trustLevelReached = LevelReachedNotification;
-  app.notificationComponents.trustLevelDropped = LevelDroppedNotification;
-
   // Members can turn the promotion email on (it's off by default).
   extend('flarum/forum/components/NotificationGrid', 'notificationTypes', function (items: ItemList<any>) {
     items.add('trustLevelReached', {

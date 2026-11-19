@@ -6,8 +6,8 @@ use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Access\Exempt;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\Event\Silenced;
+use ErnestDefoe\TrustLevels\Integration\Extensions;
 use ErnestDefoe\TrustLevels\LevelWriter;
-use Flarum\Extension\ExtensionManager;
 use Flarum\Post\CommentPost;
 use Flarum\Post\Event\Deleting as PostDeleting;
 use Flarum\Post\Event\Hidden;
@@ -38,7 +38,7 @@ class Spam
         private Config $config,
         private Exempt $exempt,
         private LevelWriter $writer,
-        private ExtensionManager $extensions,
+        private Extensions $extensions,
         private Dispatcher $events,
     ) {
     }
@@ -49,7 +49,7 @@ class Spam
         $flag = $event->flag;
         $post = $flag->post;
 
-        if ($flag->type === 'approval' || ! $post instanceof CommentPost || $post->hidden_at || $this->extensions->isEnabled('ernestdefoe-docket')) {
+        if ($flag->type === 'approval' || ! $post instanceof CommentPost || $post->hidden_at || $this->extensions->on('ernestdefoe-docket')) {
             return;
         }
 
@@ -145,7 +145,7 @@ class Spam
 
         $days = $this->config->spam('gatehouse_days');
 
-        if ($days > 0 && $this->extensions->isEnabled('ernestdefoe-gatehouse') && $author->joined_at && $author->joined_at->gt($now->copy()->subDays($days))) {
+        if ($days > 0 && $this->extensions->on('ernestdefoe-gatehouse') && $author->joined_at && $author->joined_at->gt($now->copy()->subDays($days))) {
             $this->db->table('users')->where('id', $author->id)->update(['gatehouse_status' => 'pending']);
             // Signed out everywhere: Gatehouse holds a pending account at sign-in.
             $this->db->table('access_tokens')->where('user_id', $author->id)->delete();
@@ -214,6 +214,6 @@ class Spam
 
     private function flagsOn(): bool
     {
-        return $this->extensions->isEnabled('flarum-flags');
+        return $this->extensions->on('flarum-flags');
     }
 }

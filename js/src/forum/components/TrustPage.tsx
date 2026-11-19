@@ -11,8 +11,6 @@ import { NS, MAX, Row, levelName } from '../../common/levels';
 import Rows from './Rows';
 import TrustModal from './TrustModal';
 
-declare const m: Mithril.Static;
-
 export interface Progress {
   level: number;
   levelAt: string | null;
@@ -125,28 +123,7 @@ export default class TrustPage extends UserPage {
 
     return (
       <div className="TrustPage">
-        <div className="TrustPage-head">
-          <h2 className="TrustPage-level">
-            {levelName(p.level)}
-            <small>
-              {t('level_number', { level: p.level })}
-              {p.levelAt ? <> · {t('since', { date: humanTime(p.levelAt) })}</> : null}
-              {p.locked ? (
-                <span className="TrustPage-locked">
-                  <Icon name="fas fa-lock" /> {t('locked')}
-                </span>
-              ) : null}
-            </small>
-          </h2>
-          <ol className="TrustLadder" aria-label={extractText(t('ladder_label'))}>
-            {Array.from({ length: MAX + 1 }, (_, level) => (
-              <li className={'TrustLadder-step' + (level < p.level ? ' is-done' : '') + (level === p.level ? ' is-now' : '')}>
-                <span className="TrustLadder-bar" />
-                <span className="TrustLadder-name">{levelName(level)}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
+        {this.levelHead(p)}
 
         {p.silenced ? (
           <Alert type="warning" dismissible={false} className="TrustPage-alert">
@@ -168,45 +145,80 @@ export default class TrustPage extends UserPage {
 
         {p.level >= 3 ? <p className="TrustPage-note">{t('leader_by_staff', { level: levelName(4) })}</p> : null}
 
-        {p.unlocks.length && p.level < MAX ? (
-          <section className="TrustCard">
-            <h3>{t('unlocks_title', { level: levelName(p.next ? p.next.level : p.level + 1) })}</h3>
-            <ul className="TrustUnlocks">
-              {p.unlocks.map((u) => (
-                <li>
-                  <Icon name={UNLOCK_ICONS[u.key] || 'fas fa-check'} />
-                  <span>
-                    {u.value === null
-                      ? app.translator.trans(`${NS}.forum.unlocks.${u.key}_none`)
-                      : app.translator.trans(`${NS}.forum.unlocks.${u.key}`, { value: u.value })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        {p.unlocks.length && p.level < MAX ? this.unlocksCard(p) : null}
 
-        {p.history.length ? (
-          <section className="TrustCard">
-            <h3>{t('history_title')}</h3>
-            <ul className="TrustHistory">
-              {p.history.map((h) => (
-                <li>
-                  <span className="TrustHistory-time">{humanTime(h.at)}</span>
-                  <Icon name={HISTORY_ICONS[h.type] || 'fas fa-circle'} className={'TrustHistory-icon TrustHistory-icon--' + h.type} />
-                  <span>
-                    {app.translator.trans(`${NS}.forum.history.${h.type}`, {
-                      level: h.to !== null ? levelName(h.to) : '',
-                      reason: h.reason && h.reason !== 'promoted' ? app.translator.trans(`${NS}.forum.history.reason_${h.reason}`) : '',
-                    })}
-                    {h.actor ? <em> · {h.actor}</em> : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        {p.history.length ? this.historyCard(p) : null}
       </div>
+    );
+  }
+
+  levelHead(p: Progress): Mithril.Children {
+    return (
+      <div className="TrustPage-head">
+        <h2 className="TrustPage-level">
+          {levelName(p.level)}
+          <small>
+            {t('level_number', { level: p.level })}
+            {p.levelAt ? <> · {t('since', { date: humanTime(new Date(p.levelAt)) })}</> : null}
+            {p.locked ? (
+              <span className="TrustPage-locked">
+                <Icon name="fas fa-lock" /> {t('locked')}
+              </span>
+            ) : null}
+          </small>
+        </h2>
+        <ol className="TrustLadder" aria-label={extractText(t('ladder_label'))}>
+          {Array.from({ length: MAX + 1 }, (_, level) => (
+            <li className={'TrustLadder-step' + (level < p.level ? ' is-done' : '') + (level === p.level ? ' is-now' : '')}>
+              <span className="TrustLadder-bar" />
+              <span className="TrustLadder-name">{levelName(level)}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
+
+  unlocksCard(p: Progress): Mithril.Children {
+    return (
+      <section className="TrustCard">
+        <h3>{t('unlocks_title', { level: levelName(p.next ? p.next.level : p.level + 1) })}</h3>
+        <ul className="TrustUnlocks">
+          {p.unlocks.map((u) => (
+            <li>
+              <Icon name={UNLOCK_ICONS[u.key] || 'fas fa-check'} />
+              <span>
+                {u.value === null
+                  ? app.translator.trans(`${NS}.forum.unlocks.${u.key}_none`)
+                  : app.translator.trans(`${NS}.forum.unlocks.${u.key}`, { value: u.value })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+
+  historyCard(p: Progress): Mithril.Children {
+    return (
+      <section className="TrustCard">
+        <h3>{t('history_title')}</h3>
+        <ul className="TrustHistory">
+          {p.history.map((h) => (
+            <li>
+              <span className="TrustHistory-time">{humanTime(new Date(h.at))}</span>
+              <Icon name={HISTORY_ICONS[h.type] || 'fas fa-circle'} className={'TrustHistory-icon TrustHistory-icon--' + h.type} />
+              <span>
+                {app.translator.trans(`${NS}.forum.history.${h.type}`, {
+                  level: h.to !== null ? levelName(h.to) : '',
+                  reason: h.reason && h.reason !== 'promoted' ? app.translator.trans(`${NS}.forum.history.reason_${h.reason}`) : '',
+                })}
+                {h.actor ? <em> · {h.actor}</em> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
     );
   }
 
@@ -220,7 +232,7 @@ export default class TrustPage extends UserPage {
         <p className="TrustCard-sub">
           {t('next_sub', { done, total: rows.length })}
           {p.next!.level === 3 ? <> · {t('window')}</> : null}
-          {p.computedAt ? <> · {t('updated', { time: humanTime(p.computedAt) })}</> : null}
+          {p.computedAt ? <> · {t('updated', { time: humanTime(new Date(p.computedAt)) })}</> : null}
         </p>
         {Rows(rows)}
       </section>
@@ -267,7 +279,11 @@ export default class TrustPage extends UserPage {
     this.busy = true;
     app
       .request({ method: 'POST', url: `${app.forum.attribute('apiUrl')}/trust-levels/users/${this.user!.id()}/spam` })
-      .then(() => this.load())
+      .then(() => {
+        // Hiding their posts runs in the background (it can be hundreds).
+        app.alerts.show({ type: 'success' }, t('confirm_spam_queued'));
+        return this.load();
+      })
       .finally(() => {
         this.busy = false;
         m.redraw();

@@ -8,8 +8,6 @@ import type Mithril from 'mithril';
 import { NS, MAX, levelName } from '../../common/levels';
 import type { Progress } from './TrustPage';
 
-declare const m: Mithril.Static;
-
 interface Attrs extends IFormModalAttrs {
   user: User;
   progress?: Progress;
@@ -62,29 +60,14 @@ export default class TrustModal extends FormModal<Attrs> {
         {p ? (
           <p className="TrustModal-now">
             {t('now', { level: levelName(p.level) })}
-            {p.levelAt ? <> · {humanTime(p.levelAt)}</> : null}
+            {p.levelAt ? <> · {humanTime(new Date(p.levelAt))}</> : null}
             {p.next ? (
               <> · {t('next', { level: levelName(p.next.level), done: p.next.rows.filter((r) => r.met).length, total: p.next.rows.length })}</>
             ) : null}
           </p>
         ) : null}
         <div className="Form">
-          <div className="Form-group">
-            <label id="TrustModal-level">{t('level')}</label>
-            <div className="TrustModal-levels" role="radiogroup" aria-labelledby="TrustModal-level">
-              {Array.from({ length: MAX + 1 }, (_, level) => (
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={this.level === level}
-                  className={'Button' + (this.level === level ? ' Button--primary' : '')}
-                  onclick={() => (this.level = level)}
-                >
-                  {levelName(level)}
-                </button>
-              ))}
-            </div>
-          </div>
+          {this.levelPicker()}
           <div className="Form-group">
             <label className="checkbox">
               <input type="checkbox" checked={this.locked} onchange={(e: Event) => (this.locked = (e.target as HTMLInputElement).checked)} />
@@ -106,6 +89,27 @@ export default class TrustModal extends FormModal<Attrs> {
     );
   }
 
+  levelPicker(): Mithril.Children {
+    return (
+      <div className="Form-group">
+        <label id="TrustModal-level">{t('level')}</label>
+        <div className="TrustModal-levels" role="radiogroup" aria-labelledby="TrustModal-level">
+          {Array.from({ length: MAX + 1 }, (_, level) => (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={this.level === level}
+              className={'Button' + (this.level === level ? ' Button--primary' : '')}
+              onclick={() => (this.level = level)}
+            >
+              {levelName(level)}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   onsubmit(e: SubmitEvent) {
     e.preventDefault();
     this.loading = true;
@@ -121,7 +125,9 @@ export default class TrustModal extends FormModal<Attrs> {
         this.attrs.onsave?.(r.data);
         this.hide();
       })
-      .catch(() => {})
+      .catch(() => {
+        // app.request already showed the alert; the modal stays open to try again.
+      })
       .finally(() => {
         this.loading = false;
         m.redraw();

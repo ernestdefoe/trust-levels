@@ -14,6 +14,7 @@ parameters:
     databaseMigrationsPath: [migrations]
     # Optional extensions this one integrates with only while they're enabled.
     excludePaths:
+        - src/Integration/BuzzPromotions.php
         - src/Integration/DocketCrowd.php
         - src/Integration/OnrampStep.php
         - src/Integration/Optional.php

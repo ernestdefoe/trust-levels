@@ -3,12 +3,13 @@
 namespace ErnestDefoe\TrustLevels\Gdpr;
 
 use Flarum\Gdpr\Data\Type;
-use Illuminate\Database\ConnectionInterface;
 
 /**
  * A member's daily activity counts, their rollup and their trust history, in
  * a data export; all go on erasure (the rows also go with the account through
- * their foreign keys). Registered only when flarum/gdpr is enabled.
+ * their foreign keys). Registered only when flarum/gdpr is enabled. gdpr
+ * builds its types with `new`, not the container, so the queries go through
+ * the member's own database connection.
  */
 class TrustData extends Type
 {
@@ -29,7 +30,7 @@ class TrustData extends Type
 
     public function export(): ?array
     {
-        $db = resolve(ConnectionInterface::class);
+        $db = $this->user->getConnection();
         $id = $this->user->id;
 
         return [
@@ -48,7 +49,7 @@ class TrustData extends Type
     {
         $this->delete();
         // The anonymous account starts over at New, unlocked and not on hold.
-        resolve(ConnectionInterface::class)->table('users')->where('id', $this->user->id)->update([
+        $this->user->getConnection()->table('users')->where('id', $this->user->id)->update([
             'trust_level' => 0, 'trust_level_at' => null, 'trust_locked' => false,
             'trust_silenced_at' => null, 'trust_checked_at' => null,
         ]);
@@ -56,7 +57,7 @@ class TrustData extends Type
 
     public function delete(): void
     {
-        $db = resolve(ConnectionInterface::class);
+        $db = $this->user->getConnection();
         $db->table('trust_daily')->where('user_id', $this->user->id)->delete();
         $db->table('trust_stats')->where('user_id', $this->user->id)->delete();
         $db->table('trust_events')->where('user_id', $this->user->id)->delete();

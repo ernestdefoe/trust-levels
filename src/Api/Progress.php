@@ -4,7 +4,7 @@ namespace ErnestDefoe\TrustLevels\Api;
 
 use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
-use Flarum\Extension\ExtensionManager;
+use ErnestDefoe\TrustLevels\Integration\Extensions;
 use Flarum\User\User;
 use Illuminate\Database\ConnectionInterface;
 
@@ -17,7 +17,7 @@ class Progress
     /** History types a member sees about themselves; staff see everything. */
     private const OWN_HISTORY = ['promoted', 'demoted', 'silenced', 'unsilenced'];
 
-    public function __construct(private ConnectionInterface $db, private Config $config, private ExtensionManager $extensions)
+    public function __construct(private ConnectionInterface $db, private Config $config, private Extensions $extensions)
     {
     }
 
@@ -73,11 +73,11 @@ class Progress
         $out = [];
 
         foreach (Config::LIMITS as $limit) {
-            if ($limit === 'messages_day' && ! $this->extensions->isEnabled('flarum-messages')) {
+            if ($limit === 'messages_day' && ! $this->extensions->on('flarum-messages')) {
                 continue;
             }
 
-            if ($limit === 'mentions' && ! $this->extensions->isEnabled('flarum-mentions')) {
+            if ($limit === 'mentions' && ! $this->extensions->on('flarum-mentions')) {
                 continue;
             }
 
@@ -94,11 +94,11 @@ class Progress
 
         $uploadsFrom = $this->config->get('uploads_from');
 
-        if ($this->extensions->isEnabled('fof-upload') && $from < $uploadsFrom && $to >= $uploadsFrom) {
+        if ($this->extensions->on('fof-upload') && $from < $uploadsFrom && $to >= $uploadsFrom) {
             $out[] = ['key' => 'uploads'];
         }
 
-        if ($from === 0 && $this->extensions->isEnabled('flarum-approval') && $this->config->get('approval_posts') > 0) {
+        if ($from === 0 && $this->extensions->on('flarum-approval') && $this->config->get('approval_posts') > 0) {
             $out[] = ['key' => 'approval'];
         }
 

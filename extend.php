@@ -12,6 +12,7 @@
  * boot and would fatal every request while a deploy updates composer.
  */
 
+use ErnestDefoe\TrustLevels\Access\GlobalTrustPolicy;
 use ErnestDefoe\TrustLevels\Access\TrustPolicy;
 use ErnestDefoe\TrustLevels\Api;
 use ErnestDefoe\TrustLevels\Console\EvaluateCommand;
@@ -26,10 +27,8 @@ use ErnestDefoe\TrustLevels\Notification\LevelReachedBlueprint;
 use ErnestDefoe\TrustLevels\Provider;
 use ErnestDefoe\TrustLevels\Spam\Spam;
 use ErnestDefoe\TrustLevels\Tracking\Tracker;
-use Flarum\Api\Context;
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Api\Resource\UserResource;
-use Flarum\Api\Schema;
 use Flarum\Discussion\Discussion;
 use Flarum\Discussion\Event\Saving as DiscussionSaving;
 use Flarum\Discussion\Event\UserRead;
@@ -44,18 +43,17 @@ use Flarum\Settings\Event\Saving as SettingsSaving;
 use Flarum\User\User;
 use Illuminate\Console\Scheduling\Event;
 
-$canSee = fn (User $user, Context $context) => $context->getActor()->id === $user->id
-    || $context->getActor()->hasPermission('ernestdefoe-trust-levels.manage');
-
 return [
     (new Extend\Frontend('forum'))
         ->js(__DIR__.'/js/dist/forum.js')
+        ->jsDirectory(__DIR__.'/js/dist/forum')
         ->css(__DIR__.'/less/forum.less')
         ->route('/u/{username}/trust', 'user.trust'),
 
     (new Extend\Frontend('admin'))
         ->js(__DIR__.'/js/dist/admin.js')
-        ->css(__DIR__.'/less/admin.less'),
+        ->css(__DIR__.'/less/admin.less')
+        ->content(Api\AdminPayload::class),
 
     new Extend\Locales(__DIR__.'/locale'),
 
@@ -66,64 +64,28 @@ return [
 
     (new Extend\Middleware('api'))->add(RememberActor::class),
 
+    // Plain handlers, not a JSON:API resource: a member's level and progress go
+    // only to the member and staff (everyone else gets a 404, which a user
+    // include can't do), and the rest are actions or an aggregate dashboard.
     (new Extend\Routes('api'))
         ->get('/trust-levels/users/{id:\d+}', 'trust-levels.member', Api\MemberController::class)
-        ->post('/trust-levels/users/{id:\d+}', 'trust-levels.member.update', Api\MemberController::class)
+        ->post('/trust-levels/users/{id:\d+}', 'trust-levels.member.update', Api\UpdateMemberController::class)
         ->post('/trust-levels/users/{id:\d+}/spam', 'trust-levels.member.spam', Api\SpamController::class)
         ->get('/trust-levels/dashboard', 'trust-levels.dashboard', Api\DashboardController::class)
-        ->post('/trust-levels/run', 'trust-levels.run', Api\DashboardController::class)
+        ->post('/trust-levels/run', 'trust-levels.run', Api\RunController::class)
         ->post('/trust-levels/groups', 'trust-levels.groups', Api\GroupsController::class),
 
-    // Only the member and staff ever see a level: these fields are left out
-    // for everyone else, so a level never reaches another member's browser.
     (new Extend\ApiResource(UserResource::class))
-        ->fields(fn () => [
-            Schema\Integer::make('trustLevel')
-                ->visible($canSee)
-                ->get(fn (User $user) => (int) $user->getAttribute('trust_level')),
-            Schema\Boolean::make('trustLocked')
-                ->visible($canSee)
-                ->get(fn (User $user) => (bool) $user->getAttribute('trust_locked')),
-            Schema\Boolean::make('trustSilenced')
-                ->visible($canSee)
-                ->get(fn (User $user) => (bool) $user->getAttribute('trust_silenced_at')),
-            // The composer's live link/image counter: the member's own limits.
-            Schema\Arr::make('trustLimits')
-                ->visible(fn (User $user, Context $context) => $context->getActor()->id === $user->id)
-                ->get(function (User $user) {
-                    $exempt = resolve(\ErnestDefoe\TrustLevels\Access\Exempt::class);
-                    $config = resolve(\ErnestDefoe\TrustLevels\Config::class);
-
-                    if ($exempt->is($user)) {
-                        return null;
-                    }
-
-                    $level = $exempt->level($user);
-
-                    // Private messages: only this member's own browser hears it (flarum/messages'
-                    // per-user canSendAnyMessage must stay the same for everyone, see TrustPolicy).
-                    return [
-                        'links' => $config->limit('links', $level),
-                        'images' => $config->limit('images', $level),
-                        'messages' => ! $user->getAttribute('trust_silenced_at') && $config->limit('messages_day', $level) !== 0,
-                        'messagesFrom' => $user->getAttribute('trust_silenced_at') ? null : $config->liftedAt('messages_day', $level),
-                    ];
-                }),
-        ]),
+        ->fields(Api\Fields\UserFields::class),
 
     (new Extend\ApiResource(ForumResource::class))
-        ->fields(fn () => [
-            Schema\Arr::make('trustLevelNames')
-                ->get(fn () => resolve(\ErnestDefoe\TrustLevels\Config::class)->all()['names']),
-            Schema\Boolean::make('canManageTrustLevels')
-                ->get(fn ($forum, Context $context) => $context->getActor()->hasPermission('ernestdefoe-trust-levels.manage')),
-        ]),
+        ->fields(Api\Fields\ForumFields::class),
 
     (new Extend\User())
         ->permissionGroups(InheritPermissions::class),
 
     (new Extend\Policy())
-        ->globalPolicy(TrustPolicy::class)
+        ->globalPolicy(GlobalTrustPolicy::class)
         ->modelPolicy(Discussion::class, TrustPolicy::class)
         ->modelPolicy(Post::class, TrustPolicy::class)
         ->modelPolicy(User::class, TrustPolicy::class)
@@ -170,6 +132,9 @@ return [
         ->whenExtensionEnabled('flarum-gdpr', fn () => [
             (new \Flarum\Gdpr\Extend\UserData())->addType(\ErnestDefoe\TrustLevels\Gdpr\TrustData::class),
             (new Extend\ServiceProvider())->register(\ErnestDefoe\TrustLevels\Gdpr\KeepColumnsValid::class),
+        ])
+        ->whenExtensionEnabled('ernestdefoe-docket', fn () => [
+            (new Extend\ServiceProvider())->register(\ErnestDefoe\TrustLevels\Integration\DocketProvider::class),
         ])
         ->whenExtensionEnabled('ernestdefoe-buzz', fn () => Optional::buzz())
         ->whenExtensionEnabled('ernestdefoe-onramp', fn () => Optional::onramp()),

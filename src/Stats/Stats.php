@@ -4,7 +4,7 @@ namespace ErnestDefoe\TrustLevels\Stats;
 
 use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
-use Flarum\Extension\ExtensionManager;
+use ErnestDefoe\TrustLevels\Integration\Extensions;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
@@ -22,23 +22,33 @@ class Stats
 {
     public const WINDOW_DAYS = 100;
 
-    public function __construct(private ConnectionInterface $db, private ExtensionManager $extensions, private SettingsRepositoryInterface $settings)
+    public function __construct(private ConnectionInterface $db, private Extensions $extensions, private SettingsRepositoryInterface $settings)
     {
+    }
+
+    /**
+     * The calendar day of a wrapped timestamp column, on every database:
+     * CAST(... AS date) on MySQL and PostgreSQL; SQLite has no date type
+     * (the cast would give a number), so it uses its date() function.
+     */
+    public function day(string $wrapped): string
+    {
+        return $this->db->getDriverName() === 'sqlite' ? "date($wrapped)" : "cast($wrapped as date)";
     }
 
     public function likesOn(): bool
     {
-        return $this->extensions->isEnabled('flarum-likes');
+        return $this->extensions->on('flarum-likes');
     }
 
     public function flagsOn(): bool
     {
-        return $this->extensions->isEnabled('flarum-flags');
+        return $this->extensions->on('flarum-flags');
     }
 
     public function suspendOn(): bool
     {
-        return $this->extensions->isEnabled('flarum-suspend');
+        return $this->extensions->on('flarum-suspend');
     }
 
     /**
@@ -52,8 +62,6 @@ class Stats
         }
 
         $since = Carbon::now()->subDays(self::WINDOW_DAYS);
-        $sinceDay = $since->toDateString();
-        $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
 
         $out = array_fill_keys($ids, [
             'days_visited' => 0, 'posts_read' => 0, 'topics_entered' => 0, 'read_minutes' => 0,
@@ -63,6 +71,38 @@ class Stats
             'likes_received' => 0, 'likes_received_w' => 0, 'likes_received_users_w' => 0, 'likes_received_days_w' => 0,
             'flagged_posts' => 0, 'flagged_by' => 0, 'suspended' => 0,
         ]);
+
+        $this->tracked($ids, $since->toDateString(), $out);
+        $this->windowFromHistory($ids, $since, $out);
+        $this->replies($ids, $since, $out);
+
+        if ($this->likesOn()) {
+            $this->likes($ids, $since, $out);
+        }
+
+        if ($this->flagsOn()) {
+            $this->flags($ids, $out);
+        }
+
+        $this->suspensions($ids, $suspendedMonths, $out);
+
+        foreach ($out as &$o) {
+            unset($o['_base_seconds']);
+        }
+
+        return $out;
+    }
+
+    /**
+     * What the extension tracked itself: the base totals already folded out of
+     * trust_daily, plus trust_daily's rows (all time and the window).
+     *
+     * @param int[] $ids
+     * @param array<int, array<string, int>> $out
+     */
+    private function tracked(array $ids, string $sinceDay, array &$out): void
+    {
+        $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
 
         // Base totals: days already folded out of trust_daily.
         foreach ($this->db->table('trust_stats')->whereIn('user_id', $ids)->get() as $row) {
@@ -97,10 +137,17 @@ class Stats
             $o['topics_entered_w'] = (int) $row->topics_w;
             unset($o);
         }
+    }
 
-        $this->windowFromHistory($ids, $since, $out);
-
-        // Discussions replied in: comments that aren't the first post.
+    /**
+     * Discussions replied in: comments that aren't the first post.
+     *
+     * @param int[] $ids
+     * @param array<int, array<string, int>> $out
+     */
+    private function replies(array $ids, Carbon $since, array &$out): void
+    {
+        $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
         $disc = $w('posts.discussion_id');
         $rows = $this->visibleComments()
             ->whereIn('posts.user_id', $ids)
@@ -115,22 +162,6 @@ class Stats
             $out[(int) $row->user_id]['replied_topics'] = (int) $row->total;
             $out[(int) $row->user_id]['replied_topics_w'] = (int) $row->w;
         }
-
-        if ($this->likesOn()) {
-            $this->likes($ids, $since, $out);
-        }
-
-        if ($this->flagsOn()) {
-            $this->flags($ids, $out);
-        }
-
-        $this->suspensions($ids, $suspendedMonths, $out);
-
-        foreach ($out as &$o) {
-            unset($o['_base_seconds']);
-        }
-
-        return $out;
     }
 
     /**
@@ -148,8 +179,6 @@ class Stats
         if (! $installed || Carbon::parse($installed)->lte($since)) {
             return;
         }
-
-        $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
 
         foreach ($this->db->table('discussion_user')
             ->whereIn('user_id', $ids)
@@ -181,25 +210,40 @@ class Stats
             $out[(int) $row->user_id]['posts_read_w'] = max($out[(int) $row->user_id]['posts_read_w'], (int) $row->posts);
         }
 
+        foreach ($this->activeDays($ids, $since) as $id => $n) {
+            $out[$id]['days_visited_w'] = max($out[$id]['days_visited_w'], $n);
+        }
+    }
+
+    /**
+     * Days each member posted or liked something (since $since, or ever):
+     * what history shows of their visits before the extension counted them.
+     *
+     * @param int[] $ids
+     * @return array<int, int>
+     */
+    public function activeDays(array $ids, ?Carbon $since = null): array
+    {
+        $w = fn (string $col) => $this->db->getQueryGrammar()->wrap($col);
+
         $days = $this->db->table('posts')
             ->whereIn('user_id', $ids)
-            ->where('created_at', '>=', $since)
+            ->when($since, fn ($q) => $q->where('created_at', '>=', $since))
             ->select('user_id')
-            ->selectRaw('date('.$w('posts.created_at').') as d');
+            ->selectRaw($this->day($w('posts.created_at')).' as d');
 
         if ($this->likesOn()) {
             $days->union(
                 $this->db->table('post_likes')
                     ->whereIn('user_id', $ids)
-                    ->where('created_at', '>=', $since)
+                    ->when($since, fn ($q) => $q->where('created_at', '>=', $since), fn ($q) => $q->whereNotNull('created_at'))
                     ->select('user_id')
-                    ->selectRaw('date('.$w('post_likes.created_at').') as d')
+                    ->selectRaw($this->day($w('post_likes.created_at')).' as d')
             );
         }
 
-        foreach ($this->db->query()->fromSub($days, 'days')->groupBy('user_id')->select('user_id')->selectRaw('count(distinct d) as n')->get() as $row) {
-            $out[(int) $row->user_id]['days_visited_w'] = max($out[(int) $row->user_id]['days_visited_w'], (int) $row->n);
-        }
+        return $this->db->query()->fromSub($days, 'days')->groupBy('user_id')->select('user_id')->selectRaw('count(distinct d) as n')
+            ->pluck('n', 'user_id')->map(fn ($n) => (int) $n)->all();
     }
 
     private function likes(array $ids, Carbon $since, array &$out): void
@@ -230,7 +274,7 @@ class Stats
             ->selectRaw('count(*) as total')
             ->selectRaw("sum(case when $created >= ? then 1 else 0 end) as w", [$since])
             ->selectRaw("count(distinct case when $created >= ? then $liker end) as users_w", [$since])
-            ->selectRaw("count(distinct case when $created >= ? then date($created) end) as days_w", [$since])
+            ->selectRaw("count(distinct case when $created >= ? then ".$this->day($created)." end) as days_w", [$since])
             ->get();
 
         foreach ($rows as $row) {

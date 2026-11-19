@@ -3,8 +3,6 @@ import Icon from 'flarum/common/components/Icon';
 import type Mithril from 'mithril';
 import { NS, Row } from '../../common/levels';
 
-declare const m: Mithril.Static;
-
 /** A requirement list: met or not, a bar, "have / need". */
 export default function Rows(rows: Row[]): Mithril.Children {
   return rows.map((row) => {

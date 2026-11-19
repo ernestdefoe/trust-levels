@@ -2,6 +2,7 @@
 
 namespace ErnestDefoe\TrustLevels\Integration;
 
+use Ernestdefoe\Buzz\Recorder;
 use ErnestDefoe\TrustLevels\Config;
 use ErnestDefoe\TrustLevels\Event\LevelChanged;
 use ErnestDefoe\TrustLevels\Names;
@@ -13,7 +14,8 @@ use ErnestDefoe\TrustLevels\Names;
  */
 class BuzzPromotions
 {
-    public function __construct(private Config $config, private Names $names)
+    // Registered only while Buzz is enabled (Integration\Optional), so Recorder always exists here.
+    public function __construct(private Config $config, private Names $names, private Recorder $recorder)
     {
     }
 
@@ -23,7 +25,7 @@ class BuzzPromotions
             return;
         }
 
-        resolve('Ernestdefoe\Buzz\Recorder')->record('trust-levels.reached', $event->user, ['level' => $this->names->name($event->to)], [
+        $this->recorder->record('trust-levels.reached', $event->user, ['level' => $this->names->name($event->to)], [
             'subject_id' => $event->user->id,
         ]);
     }

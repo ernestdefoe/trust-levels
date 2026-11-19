@@ -3,8 +3,8 @@
 namespace ErnestDefoe\TrustLevels;
 
 use Carbon\Carbon;
+use ErnestDefoe\TrustLevels\Integration\Extensions;
 use ErnestDefoe\TrustLevels\Stats\Stats;
-use Flarum\Extension\ExtensionManager;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -42,7 +42,7 @@ class Evaluator
         private Stats $stats,
         private Requirements $requirements,
         private LevelWriter $writer,
-        private ExtensionManager $extensions,
+        private Extensions $extensions,
         private SettingsRepositoryInterface $settings,
         private Cache $cache,
     ) {
@@ -58,6 +58,26 @@ class Evaluator
      *
      * @return int|null members checked, or null when another run held the lock
      */
+    /** Whether a run holds the lock right now (Run now says so instead of queueing a second one). */
+    public function running(): bool
+    {
+        $store = $this->cache->getStore();
+
+        if (! $store instanceof LockProvider) {
+            return false;
+        }
+
+        $lock = $store->lock('ernestdefoe-trust-levels.run', 3600);
+
+        if (! $lock->get()) {
+            return true;
+        }
+
+        $lock->release();
+
+        return false;
+    }
+
     public function run(bool $all = false, int $wait = 0): ?int
     {
         $store = $this->cache->getStore();
@@ -146,79 +166,115 @@ class Evaluator
         foreach ($users as $user) {
             $id = (int) $user->id;
             $s = $stats[$id];
-            $current = (int) $user->getAttribute('trust_level');
-            $placing = ! $user->getAttribute('trust_level_at');
-
-            $earned = 0;
-            $next = null;
-
-            for ($level = 1; $level <= Config::AUTO_MAX; $level++) {
-                $req = $this->requirements->rows($level, $s, $totals);
-
-                if (! Requirements::met($req)) {
-                    $next = ['level' => $level, 'rows' => $req];
-                    break;
-                }
-
-                $earned = $level;
-            }
-
-            $keep = null;
-
-            if (! $user->getAttribute('trust_locked')) {
-                $target = $earned;
-
-                if ($user->getAttribute('trust_silenced_at')) {
-                    $target = min($target, $current);
-                }
-
-                if (isset($held[$id])) {
-                    $target = 0;
-                }
-
-                if (isset($caps[$id])) {
-                    $target = min($target, max($caps[$id], $current));
-                }
-
-                if ($placing) {
-                    // Here before the install: placed from history, never below Basic.
-                    // Joined since: New, like anyone signing up today.
-                    $floor = ! isset($held[$id]) && $this->joinedBeforeInstall($user) ? 1 : 0;
-                    $this->writer->set($user, $floor ? max($current, $target, $floor) : $current, 'placed');
-                } elseif ($target > $current && $current < Config::AUTO_MAX + 1) {
-                    $this->writer->set($user, $target, 'promoted');
-                } elseif ($current === 3) {
-                    $keep = $this->requirements->rows(3, $s, $totals, 0.9);
-                    $at = $user->getAttribute('trust_level_at');
-
-                    if (! Requirements::met($keep) && $at && Carbon::parse($at)->addDays($graceDays)->isPast()) {
-                        $this->writer->set($user, 2, 'quiet');
-                    }
-                }
-            }
-
-            $level = (int) $user->getAttribute('trust_level');
-
-            // Placed or set above what the numbers earn: show the level above where they are.
-            if (! $next || $next['level'] <= $level) {
-                $next = $level < Config::AUTO_MAX ? ['level' => $level + 1, 'rows' => $this->requirements->rows($level + 1, $s, $totals)] : null;
-            }
-
-            if ($level === 3) {
-                $keep ??= $this->requirements->rows(3, $s, $totals, 0.9);
-            }
-
-            $rows[] = [
-                'user_id' => $id,
-                'data' => json_encode(['next' => $next, 'keep' => $level === 3 ? $keep : null, 'stats' => $s]),
-                'next_level' => $next['level'] ?? null,
-                'next_percent' => $next ? Requirements::percent($next['rows']) : 0,
-                'computed_at' => $now,
-            ];
+            [$earned, $next] = $this->earned($s, $totals);
+            $keep = $user->getAttribute('trust_locked') ? null : $this->move($user, $earned, isset($held[$id]), $caps[$id] ?? null, $s, $totals, $graceDays);
+            $rows[] = $this->statsRow($user, $s, $totals, $next, $keep, $now);
         }
 
         $this->db->table('trust_stats')->upsert($rows, ['user_id'], ['data', 'next_level', 'next_percent', 'computed_at']);
         $this->db->table('users')->whereIn('id', $ids)->update(['trust_checked_at' => $now]);
+    }
+
+    /**
+     * The highest level the numbers earn (each needs the ones below it), and
+     * the first level they don't, with its checklist.
+     *
+     * @param array<string, int> $s
+     * @param array{topics: int, posts: int} $totals
+     * @return array{0: int, 1: array{level: int, rows: array<int, array<string, mixed>>}|null}
+     */
+    private function earned(array $s, array $totals): array
+    {
+        $earned = 0;
+
+        for ($level = 1; $level <= Config::AUTO_MAX; $level++) {
+            $req = $this->requirements->rows($level, $s, $totals);
+
+            if (! Requirements::met($req)) {
+                return [$earned, ['level' => $level, 'rows' => $req]];
+            }
+
+            $earned = $level;
+        }
+
+        return [$earned, null];
+    }
+
+    /**
+     * Moves an unlocked member to where they belong: placed once, promoted, or
+     * (a Regular only) dropped for going quiet. A hold, a Sleuth match and a
+     * drop for flags limit how high they can go.
+     *
+     * @param array<string, int> $s
+     * @param array{topics: int, posts: int} $totals
+     * @return array<int, array<string, mixed>>|null the Regular "keep" checklist when it was worked out
+     */
+    private function move(User $user, int $earned, bool $held, ?int $cap, array $s, array $totals, int $graceDays): ?array
+    {
+        $current = (int) $user->getAttribute('trust_level');
+        $target = $earned;
+
+        if ($user->getAttribute('trust_silenced_at')) {
+            $target = min($target, $current);
+        }
+
+        if ($held) {
+            $target = 0;
+        }
+
+        if ($cap !== null) {
+            $target = min($target, max($cap, $current));
+        }
+
+        if (! $user->getAttribute('trust_level_at')) {
+            // Here before the install: placed from history, never below Basic.
+            // Joined since: New, like anyone signing up today.
+            $floor = ! $held && $this->joinedBeforeInstall($user) ? 1 : 0;
+            $this->writer->set($user, $floor ? max($current, $target, $floor) : $current, 'placed');
+        } elseif ($target > $current && $current < Config::AUTO_MAX + 1) {
+            $this->writer->set($user, $target, 'promoted');
+        } elseif ($current === 3) {
+            $keep = $this->requirements->rows(3, $s, $totals, 0.9);
+            // (trust_level_at is set: the member was placed, the branch above.)
+            if (! Requirements::met($keep) && Carbon::parse($user->getAttribute('trust_level_at'))->addDays($graceDays)->isPast()) {
+                $this->writer->set($user, 2, 'quiet');
+            }
+
+            return $keep;
+        }
+
+        return null;
+    }
+
+    /**
+     * The member's trust_stats row: what the progress page and dashboard read.
+     *
+     * @param array<string, int> $s
+     * @param array{topics: int, posts: int} $totals
+     * @param array{level: int, rows: array<int, array<string, mixed>>}|null $next
+     * @param array<int, array<string, mixed>>|null $keep
+     * @return array<string, mixed>
+     */
+    private function statsRow(User $user, array $s, array $totals, ?array $next, ?array $keep, Carbon $now): array
+    {
+        $level = (int) $user->getAttribute('trust_level');
+
+        // Placed or set above what the numbers earn: show the level above where they are.
+        if (! $next || $next['level'] <= $level) {
+            $next = $level < Config::AUTO_MAX ? ['level' => $level + 1, 'rows' => $this->requirements->rows($level + 1, $s, $totals)] : null;
+        }
+
+        if ($level === 3) {
+            $keep ??= $this->requirements->rows(3, $s, $totals, 0.9);
+        }
+
+        return [
+            'user_id' => (int) $user->id,
+            'data' => json_encode(['next' => $next, 'keep' => $level === 3 ? $keep : null, 'stats' => $s]),
+            'next_level' => $next['level'] ?? null,
+            'next_percent' => $next ? Requirements::percent($next['rows']) : 0,
+            'computed_at' => $now,
+        ];
     }
 
     /**
@@ -298,23 +354,8 @@ class Evaluator
             $base[(int) $row->user_id]['base_read_seconds'] = (int) $row->posts * 15;
         }
 
-        $days = $this->db->table('posts')
-            ->whereIn('user_id', $ids)
-            ->select('user_id')
-            ->selectRaw('date('.$w('posts.created_at').') as d');
-
-        if ($this->stats->likesOn()) {
-            $days->union(
-                $this->db->table('post_likes')
-                    ->whereIn('user_id', $ids)
-                    ->whereNotNull('created_at')
-                    ->select('user_id')
-                    ->selectRaw('date('.$w('post_likes.created_at').') as d')
-            );
-        }
-
-        foreach ($this->db->query()->fromSub($days, 'days')->groupBy('user_id')->select('user_id')->selectRaw('count(distinct d) as n')->get() as $row) {
-            $base[(int) $row->user_id]['base_days'] = (int) $row->n;
+        foreach ($this->stats->activeDays($ids) as $id => $n) {
+            $base[$id]['base_days'] = $n;
         }
 
         $this->db->table('trust_stats')->insertOrIgnore(array_map(fn ($id, $b) => ['user_id' => $id] + $b, array_keys($base), $base));
@@ -323,7 +364,7 @@ class Evaluator
     /** @return array<int, true> members Sleuth links to a banned account, not yet reviewed */
     private function sleuthHolds(array $ids): array
     {
-        if (! $this->extensions->isEnabled('ernestdefoe-sleuth')) {
+        if (! $this->extensions->on('ernestdefoe-sleuth')) {
             return [];
         }
 

@@ -235,8 +235,11 @@ class TrustLevelsTest extends TestCase
         $rows = [];
 
         for ($d = 1; $d <= 12; $d++) {
-            $rows[] = ['id' => 100 + $d, 'discussion_id' => 1, 'number' => 100 + $d, 'user_id' => 4, 'type' => 'comment', 'created_at' => Carbon::now()->subDays($d), 'content' => '<t><p>x</p></t>'];
+            $rows[] = ['id' => 100 + $d, 'discussion_id' => 1, 'number' => 100 + $d, 'user_id' => 4, 'type' => 'comment', 'created_at' => Carbon::now()->startOfDay()->subDays($d)->addHours(9), 'content' => '<t><p>x</p></t>'];
         }
+
+        // A second post later the same day is the same day visited.
+        $rows[] = ['id' => 200, 'discussion_id' => 1, 'number' => 200, 'user_id' => 4, 'type' => 'comment', 'created_at' => Carbon::now()->startOfDay()->subDays(1)->addHours(21), 'content' => '<t><p>x</p></t>'];
 
         $db->table('posts')->insert($rows);
         $db->table('discussion_user')->insert(['user_id' => 4, 'discussion_id' => 1, 'last_read_post_number' => 40, 'last_read_at' => Carbon::now()->subDays(3)]);
@@ -245,7 +248,7 @@ class TrustLevelsTest extends TestCase
         $this->check();
 
         $stats = json_decode($db->table('trust_stats')->where('user_id', 4)->value('data'), true)['stats'];
-        $this->assertSame(13, $stats['days_visited_w'], '12 days posting, plus the fixture posts 30 days ago');
+        $this->assertSame(13, $stats['days_visited_w'], '12 days posting (one of them twice), plus the fixture posts 30 days ago');
         $this->assertSame(1, $stats['topics_entered_w']);
         $this->assertSame(6, $stats['posts_read_w'], 'only posts written in the window, up to the read mark: not the 40 the mark says');
     }
@@ -578,20 +581,87 @@ class TrustLevelsTest extends TestCase
         [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
         $this->assertSame(200, $status);
         $this->assertTrue($body['data']['busy']);
+        $this->assertFalse($body['data']['queued'], 'no second run is queued behind one already going');
 
         $lock->release();
-        [, $body] = $this->api('POST', '/api/trust-levels/run', 1);
+        [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
+        $this->assertSame(202, $status);
         $this->assertFalse($body['data']['busy']);
+        $this->assertTrue($body['data']['queued']);
+    }
+
+    #[Test]
+    public function run_now_is_queued_off_the_request(): void
+    {
+        $this->app();
+
+        // With a real queue the run waits for a worker.
+        $this->app->getContainer()->instance('flarum.queue.connection', $fake = new \Illuminate\Support\Testing\Fakes\QueueFake($this->app->getContainer()));
+        [$status] = $this->api('POST', '/api/trust-levels/run', 1);
+
+        $this->assertSame(202, $status);
+        $fake->assertPushed(\ErnestDefoe\TrustLevels\Job\RunCheck::class);
+        $this->assertNull($this->db()->table('settings')->where('key', Config::LAST_RUN)->value('value'), 'nothing ran inside the request');
+    }
+
+    #[Test]
+    public function confirm_spam_hides_every_post_and_suspends_off_the_request(): void
+    {
+        $this->extension('flarum-suspend');
+        $rows = [];
+        for ($n = 1; $n <= 250; $n++) {
+            $rows[] = ['id' => 2000 + $n, 'discussion_id' => 1, 'number' => 2000 + $n, 'user_id' => 3, 'type' => 'comment', 'created_at' => $this->then, 'content' => '<t><p>spam</p></t>'];
+        }
+        $this->db()->table('posts')->insert($rows);
+        $this->db()->table('users')->where('id', 3)->update(['trust_silenced_at' => Carbon::now()]);
+
+        $this->assertSame(403, $this->api('POST', '/api/trust-levels/users/3/spam', 4)[0], 'members can not');
+        $this->assertSame(404, $this->api('POST', '/api/trust-levels/users/1/spam', 5)[0], 'never on staff');
+
+        $this->app->getContainer()->instance('flarum.queue.connection', $fake = new \Illuminate\Support\Testing\Fakes\QueueFake($this->app->getContainer()));
+        [$status] = $this->api('POST', '/api/trust-levels/users/3/spam', 5);
+
+        $this->assertSame(202, $status);
+        $this->assertSame(251, $this->db()->table('posts')->where('user_id', 3)->whereNull('hidden_at')->count(), 'nothing hidden inside the request');
+
+        // The worker's side: all 251 posts, past the old cap of 200.
+        $job = $fake->pushed(\ErnestDefoe\TrustLevels\Job\ConfirmSpam::class)->first();
+        $this->app->getContainer()->call([$job, 'handle']);
+
+        $this->assertSame(0, $this->db()->table('posts')->where('user_id', 3)->whereNull('hidden_at')->count());
+        $this->assertSame(251, $this->db()->table('posts')->where('user_id', 3)->where('hidden_user_id', 5)->count());
+        $this->assertNotNull($this->user(3)->suspended_until);
+        $this->assertSame(1, $this->db()->table('trust_events')->where('user_id', 3)->where('type', 'spam')->count());
+        $this->assertSame(1, $this->db()->table('trust_events')->where('user_id', 3)->where('type', 'suspended')->count());
     }
 
     #[Test]
     public function the_admin_dashboard_counts_members_per_level(): void
     {
         [$status, $body] = $this->api('POST', '/api/trust-levels/run', 1);
-        $this->assertSame(200, $status);
+        $this->assertSame(202, $status, 'queued (the test queue is sync, so it has run)');
         $this->assertSame($this->db()->table('users')->count(), array_sum($body['data']['counts']));
         $this->assertSame(1, $body['data']['counts'][3]);
         $this->assertFalse($body['data']['stale']);
         $this->assertSame(403, $this->api('GET', '/api/trust-levels/dashboard', 5)[0]);
+    }
+
+    #[Test]
+    public function the_promotion_email_renders_without_lookups_of_its_own(): void
+    {
+        $this->setting('mail_driver', 'log');
+        $this->app();
+        $container = $this->app->getContainer();
+        $user = User::query()->findOrFail(3);
+
+        // The writer fills in the name and slug, so the mail needs no lookups of its own.
+        $blueprint = new \ErnestDefoe\TrustLevels\Notification\LevelReachedBlueprint($user, 2, 'Member', 'nina');
+        $container->make(\Flarum\Notification\NotificationMailer::class)->send($blueprint, $user);
+
+        $view = $container->make(\Illuminate\Contracts\View\Factory::class);
+        // (Extension locales don't reach this test translator, so the body is checked on dev.)
+        foreach ($blueprint->getEmailViews() as $name) {
+            $this->assertNotSame('', $view->make($name, ['blueprint' => $blueprint])->render());
+        }
     }
 }

@@ -3,7 +3,7 @@
 namespace ErnestDefoe\TrustLevels\Listener;
 
 use ErnestDefoe\TrustLevels\Config;
-use Flarum\Extension\ExtensionManager;
+use ErnestDefoe\TrustLevels\Integration\Extensions;
 use Flarum\Foundation\ValidationException;
 use Flarum\Group\Group;
 use Flarum\Locale\TranslatorInterface;
@@ -19,7 +19,7 @@ class ValidateSettings
 {
     public function __construct(
         private ConnectionInterface $db,
-        private ExtensionManager $extensions,
+        private Extensions $extensions,
         private TranslatorInterface $translator,
     ) {
     }
@@ -47,7 +47,7 @@ class ValidateSettings
             throw new ValidationException(['groups' => $this->translator->trans('ernestdefoe-trust-levels.api.group_twice')]);
         }
 
-        if ($this->extensions->isEnabled('ernestdefoe-ladder') && $this->db->table('ladder_rungs')->whereIn('group_id', $groups)->exists()) {
+        if ($this->extensions->on('ernestdefoe-ladder') && $this->db->table('ladder_rungs')->whereIn('group_id', $groups)->exists()) {
             throw new ValidationException(['groups' => $this->translator->trans('ernestdefoe-trust-levels.api.group_ladder')]);
         }
     }

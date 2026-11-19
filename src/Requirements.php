@@ -26,65 +26,93 @@ class Requirements
     public function rows(int $level, array $s, array $totals, float $margin = 1.0): array
     {
         $r = $this->config->req($level);
+        $rows = $level < 3 ? $this->allTime($r, $s) : $this->window($r, $s, $totals);
+
+        $rows = array_map(fn (array $row) => $this->row(...$row, margin: $margin), $rows);
+
+        if ($level >= 3 && $r['suspended_months'] > 0) {
+            $rows[] = ['key' => 'not_suspended', 'have' => $s['suspended'] ? 0 : 1, 'need' => 1, 'met' => ! $s['suspended']];
+        }
+
+        return array_values(array_filter($rows));
+    }
+
+    /**
+     * Basic and Member: totals since joining.
+     *
+     * @param array<string, int> $r
+     * @param array<string, int> $s
+     * @return list<array{0: string, 1: int, 2: int}>
+     */
+    private function allTime(array $r, array $s): array
+    {
         $rows = [];
-        $add = function (string $key, int $have, int $need, bool $upTo = false) use (&$rows, $margin) {
-            if ($need <= 0 && ! $upTo) {
-                return;
-            }
 
-            $need = $upTo ? $need : (int) ceil($need * $margin);
-            $rows[] = ['key' => $key, 'have' => $have, 'need' => $need, 'met' => $upTo ? $have <= $need : $have >= $need] + ($upTo ? ['upTo' => true] : []);
-        };
-
-        if ($level < 3) {
-            $add('days_visited', $s['days_visited'], $r['days_visited'] ?? 0);
-            $add('topics_entered', $s['topics_entered'], $r['topics_entered'] ?? 0);
-            $add('posts_read', $s['posts_read'], $r['posts_read'] ?? 0);
-            $add('read_minutes', $s['read_minutes'], $r['read_minutes'] ?? 0);
-            $add('replied_topics', $s['replied_topics'], $r['replied_topics'] ?? 0);
-
-            if ($this->stats->likesOn()) {
-                $add('likes_given', $s['likes_given'], $r['likes_given'] ?? 0);
-                $add('likes_received', $s['likes_received'], $r['likes_received'] ?? 0);
-            }
-
-            return $rows;
-        }
-
-        $add('days_visited', $s['days_visited_w'], $r['days_visited']);
-        $add('replied_topics', $s['replied_topics_w'], $r['replied_topics']);
-
-        if ($r['topics_percent'] > 0) {
-            $add('topics_entered', $s['topics_entered_w'], min((int) ceil($totals['topics'] * $r['topics_percent'] / 100), $r['topics_max'] ?: PHP_INT_MAX));
-        }
-
-        if ($r['posts_percent'] > 0) {
-            $add('posts_read', $s['posts_read_w'], min((int) ceil($totals['posts'] * $r['posts_percent'] / 100), $r['posts_max'] ?: PHP_INT_MAX));
+        foreach (['days_visited', 'topics_entered', 'posts_read', 'read_minutes', 'replied_topics'] as $key) {
+            $rows[] = [$key, $s[$key], $r[$key] ?? 0];
         }
 
         if ($this->stats->likesOn()) {
-            $add('likes_given', $s['likes_given_w'], $r['likes_given']);
-            $add('likes_received', $s['likes_received_w'], $r['likes_received']);
-            $add('likes_received_users', $s['likes_received_users_w'], $r['likes_received_users']);
-            $add('likes_received_days', $s['likes_received_days_w'], $r['likes_received_days']);
+            $rows[] = ['likes_given', $s['likes_given'], $r['likes_given'] ?? 0];
+            $rows[] = ['likes_received', $s['likes_received'], $r['likes_received'] ?? 0];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Regular: the last 100 days, reading as a share of what was posted.
+     *
+     * @param array<string, int> $r
+     * @param array<string, int> $s
+     * @param array{topics: int, posts: int} $totals
+     * @return list<array{0: string, 1: int, 2: int, 3?: bool}>
+     */
+    private function window(array $r, array $s, array $totals): array
+    {
+        $rows = [['days_visited', $s['days_visited_w'], $r['days_visited']], ['replied_topics', $s['replied_topics_w'], $r['replied_topics']]];
+
+        if ($r['topics_percent'] > 0) {
+            $rows[] = ['topics_entered', $s['topics_entered_w'], min((int) ceil($totals['topics'] * $r['topics_percent'] / 100), $r['topics_max'] ?: PHP_INT_MAX)];
+        }
+
+        if ($r['posts_percent'] > 0) {
+            $rows[] = ['posts_read', $s['posts_read_w'], min((int) ceil($totals['posts'] * $r['posts_percent'] / 100), $r['posts_max'] ?: PHP_INT_MAX)];
+        }
+
+        if ($this->stats->likesOn()) {
+            foreach (['likes_given', 'likes_received', 'likes_received_users', 'likes_received_days'] as $key) {
+                $rows[] = [$key, $s[$key.'_w'], $r[$key]];
+            }
         }
 
         // "Fewer than N": 0 turns the requirement off, like every other one.
         if ($this->stats->flagsOn()) {
-            if ($r['flagged_posts'] > 0) {
-                $add('flagged_posts', $s['flagged_posts'], $r['flagged_posts'] - 1, true);
+            foreach (['flagged_posts', 'flagged_by'] as $key) {
+                if ($r[$key] > 0) {
+                    $rows[] = [$key, $s[$key], $r[$key] - 1, true];
+                }
             }
-
-            if ($r['flagged_by'] > 0) {
-                $add('flagged_by', $s['flagged_by'], $r['flagged_by'] - 1, true);
-            }
-        }
-
-        if ($r['suspended_months'] > 0) {
-            $rows[] = ['key' => 'not_suspended', 'have' => $s['suspended'] ? 0 : 1, 'need' => 1, 'met' => ! $s['suspended']];
         }
 
         return $rows;
+    }
+
+    /**
+     * One checklist row, or null for a requirement turned off (0). The margin
+     * lowers what's needed; an "up to" row (reports) is a ceiling, never lowered.
+     *
+     * @return array{key: string, have: int, need: int, met: bool, upTo?: bool}|null
+     */
+    private function row(string $key, int $have, int $need, bool $upTo = false, float $margin = 1.0): ?array
+    {
+        if ($need <= 0 && ! $upTo) {
+            return null;
+        }
+
+        $need = $upTo ? $need : (int) ceil($need * $margin);
+
+        return ['key' => $key, 'have' => $have, 'need' => $need, 'met' => $upTo ? $have <= $need : $have >= $need] + ($upTo ? ['upTo' => true] : []);
     }
 
     public static function met(array $rows): bool

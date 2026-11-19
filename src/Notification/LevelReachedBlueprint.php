@@ -2,7 +2,6 @@
 
 namespace ErnestDefoe\TrustLevels\Notification;
 
-use ErnestDefoe\TrustLevels\Names;
 use Flarum\Database\AbstractModel;
 use Flarum\Locale\TranslatorInterface;
 use Flarum\Notification\AlertableInterface;
@@ -20,7 +19,11 @@ use Flarum\User\User;
  */
 class LevelReachedBlueprint implements BlueprintInterface, AlertableInterface, MailableInterface
 {
-    public function __construct(public User $user, public int $level)
+    /**
+     * @param string $levelName the level's name as the admin set it, and $slug the member's
+     *        profile slug, both for the email (given by LevelWriter, so the mail needs no lookups)
+     */
+    public function __construct(public User $user, public int $level, public string $levelName = '', public string $slug = '')
     {
     }
 
@@ -59,6 +62,6 @@ class LevelReachedBlueprint implements BlueprintInterface, AlertableInterface, M
 
     public function getEmailSubject(TranslatorInterface $translator): string
     {
-        return $translator->trans('ernestdefoe-trust-levels.email.reached.subject', ['{level}' => resolve(Names::class)->name($this->level)]);
+        return $translator->trans('ernestdefoe-trust-levels.email.reached.subject', ['{level}' => $this->levelName]);
     }
 }

@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Event\LevelChanged;
 use ErnestDefoe\TrustLevels\Notification\LevelDroppedBlueprint;
 use ErnestDefoe\TrustLevels\Notification\LevelReachedBlueprint;
+use Flarum\Http\SlugManager;
 use Flarum\Notification\NotificationSyncer;
 use Flarum\User\User;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -22,6 +23,8 @@ class LevelWriter
         private ConnectionInterface $db,
         private NotificationSyncer $notifications,
         private Dispatcher $events,
+        private Names $names,
+        private SlugManager $slugs,
     ) {
     }
 
@@ -57,7 +60,7 @@ class LevelWriter
 
         if ($reason !== 'placed') {
             if ($to > $from) {
-                $this->notifications->sync(new LevelReachedBlueprint($user, $to), [$user]);
+                $this->notifications->sync(new LevelReachedBlueprint($user, $to, $this->names->name($to), $this->slugs->forResource(User::class)->toSlug($user)), [$user]);
             } else {
                 $this->notifications->sync(new LevelDroppedBlueprint($user, $to, $reason), [$user]);
             }
