@@ -114,9 +114,9 @@ class Evaluator
 
         User::query()
             ->where(fn ($q) => $q->where('last_seen_at', '>=', $since)
-                ->orWhereDoesntHave('trustState', fn ($s) => $s->whereNotNull('level_at'))
-                ->when($all, fn ($q) => $q->orWhereHas('trustState', fn ($s) => $s->where('level', 3))))
-            ->with('trustState')
+                ->orWhereNull('trust_level_at')
+                ->when($all, fn ($q) => $q->orWhere('trust_level', 3)))
+            ->select('users.*')
             ->chunkById(self::CHUNK, function ($users) use (&$checked) {
                 $this->evaluate($users->all());
                 $checked += $users->count();
@@ -148,7 +148,7 @@ class Evaluator
         $unplaced = array_values(array_filter($ids, function ($id) use ($users) {
             $user = $this->find($users, $id);
 
-            return ! TrustState::of($user)->level_at && $this->joinedBeforeInstall($user);
+            return ! $user->getAttribute('trust_level_at') && $this->joinedBeforeInstall($user);
         }));
 
         if ($unplaced) {
@@ -167,12 +167,12 @@ class Evaluator
             $id = (int) $user->id;
             $s = $stats[$id];
             [$earned, $next] = $this->earned($s, $totals);
-            $keep = TrustState::of($user)->locked ? null : $this->move($user, $earned, isset($held[$id]), $caps[$id] ?? null, $s, $totals, $graceDays);
+            $keep = $user->getAttribute('trust_locked') ? null : $this->move($user, $earned, isset($held[$id]), $caps[$id] ?? null, $s, $totals, $graceDays);
             $rows[] = $this->statsRow($user, $s, $totals, $next, $keep, $now);
         }
 
         $this->db->table('trust_stats')->upsert($rows, ['user_id'], ['data', 'next_level', 'next_percent', 'computed_at']);
-        TrustState::query()->upsert(array_map(fn ($id) => ['user_id' => $id, 'checked_at' => $now], $ids), ['user_id'], ['checked_at']);
+        User::query()->whereIn('id', $ids)->update(['trust_checked_at' => $now]);
     }
 
     /**
@@ -211,11 +211,10 @@ class Evaluator
      */
     private function move(User $user, int $earned, bool $held, ?int $cap, array $s, array $totals, int $graceDays): ?array
     {
-        $state = TrustState::of($user);
-        $current = $state->level;
+        $current = (int) $user->getAttribute('trust_level');
         $target = $earned;
 
-        if ($state->silenced_at) {
+        if ($user->getAttribute('trust_silenced_at')) {
             $target = min($target, $current);
         }
 
@@ -227,7 +226,7 @@ class Evaluator
             $target = min($target, max($cap, $current));
         }
 
-        if (! $state->level_at) {
+        if (! $user->getAttribute('trust_level_at')) {
             // Here before the install: placed from history, never below Basic.
             // Joined since: New, like anyone signing up today.
             $floor = ! $held && $this->joinedBeforeInstall($user) ? 1 : 0;
@@ -236,8 +235,8 @@ class Evaluator
             $this->writer->set($user, $target, 'promoted');
         } elseif ($current === 3) {
             $keep = $this->requirements->rows(3, $s, $totals, 0.9);
-            // (level_at is set: the member was placed, the branch above.)
-            if (! Requirements::met($keep) && $state->level_at->copy()->addDays($graceDays)->isPast()) {
+            // (trust_level_at is set: the member was placed, the branch above.)
+            if (! Requirements::met($keep) && Carbon::parse($user->getAttribute('trust_level_at'))->addDays($graceDays)->isPast()) {
                 $this->writer->set($user, 2, 'quiet');
             }
 
@@ -258,7 +257,7 @@ class Evaluator
      */
     private function statsRow(User $user, array $s, array $totals, ?array $next, ?array $keep, Carbon $now): array
     {
-        $level = TrustState::of($user)->level;
+        $level = (int) $user->getAttribute('trust_level');
 
         // Placed or set above what the numbers earn: show the level above where they are.
         if (! $next || $next['level'] <= $level) {

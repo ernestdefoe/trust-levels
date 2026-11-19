@@ -3,7 +3,6 @@
 namespace ErnestDefoe\TrustLevels\Tests\integration\api;
 
 use Carbon\Carbon;
-use ErnestDefoe\TrustLevels\Tests\integration\TrustFixtures;
 use Flarum\Discussion\Discussion;
 use Flarum\Group\Group;
 use Flarum\Post\Post;
@@ -20,7 +19,6 @@ use PHPUnit\Framework\Attributes\Test;
 class PoliciesTest extends TestCase
 {
     use RetrievesAuthorizedUsers;
-    use TrustFixtures;
 
     protected function setUp(): void
     {
@@ -30,7 +28,7 @@ class PoliciesTest extends TestCase
 
         $at = Carbon::now()->subDays(3);
 
-        $this->prepareDatabase($this->trustFixtures([
+        $this->prepareDatabase([
             User::class => [
                 $this->normalUser(),
                 ['id' => 3, 'username' => 'nina', 'email' => 'nina@machine.local', 'is_email_confirmed' => 1, 'trust_level' => 0, 'trust_level_at' => $at],
@@ -53,7 +51,7 @@ class PoliciesTest extends TestCase
             Post::class => [
                 ['id' => 1, 'discussion_id' => 1, 'number' => 1, 'user_id' => 2, 'type' => 'comment', 'created_at' => $at, 'content' => '<t><p>One</p></t>', 'is_approved' => 1],
             ],
-        ]));
+        ]);
     }
 
     private function can(int $userId, string $ability, $model = null): bool
@@ -170,29 +168,5 @@ class PoliciesTest extends TestCase
         $this->assertTrue($this->can(5, 'reply', $discussion));
         $this->assertTrue($this->can(5, 'like', $post));
         $this->assertSame(200, $this->send($this->request('GET', '/api/discussions/1', ['authenticatedAs' => 7]))->getStatusCode());
-    }
-
-    /**
-     * flarum/messages asks can('sendAnyMessage') of every member in a list, and with
-     * level groups set up, each member's groups depend on their level: their trust
-     * rows still load in one query, not one per member.
-     */
-    #[Test]
-    public function a_list_of_members_loads_their_levels_in_one_query(): void
-    {
-        $this->setting(\ErnestDefoe\TrustLevels\Config::KEY, json_encode(['groups' => [2 => 10]]));
-        $this->database()->table('groups')->insert(['id' => 10, 'name_singular' => 'Trust 2', 'name_plural' => 'Trust 2', 'is_hidden' => 1]);
-        $rows = [];
-        for ($n = 1; $n <= 20; $n++) {
-            $rows[] = ['id' => 100 + $n, 'username' => "many$n", 'email' => "many$n@machine.local", 'password' => 'x', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now()];
-        }
-        $this->database()->table('users')->insert($rows);
-        $this->setTrust(range(101, 110), ['level' => 2, 'level_at' => Carbon::now()]);
-
-        // flarum/testing fails the request if a query repeats per member.
-        $response = $this->send($this->request('GET', '/api/users', ['authenticatedAs' => 5]));
-
-        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        $this->assertCount(20, json_decode((string) $response->getBody(), true)['data']);
     }
 }

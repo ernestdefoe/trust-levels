@@ -4,13 +4,13 @@ namespace ErnestDefoe\TrustLevels\Access;
 
 use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Config;
-use ErnestDefoe\TrustLevels\TrustState;
 use Flarum\Settings\SettingsRepositoryInterface;
 use Flarum\User\User;
 
 /**
  * Who the limits never apply to: admins, holders of the bypass permission
- * (moderators by default) and the groups the admin lists.
+ * (moderators by default) and the groups the admin lists. Reads only what the
+ * actor already has loaded.
  */
 class Exempt
 {
@@ -41,17 +41,11 @@ class Exempt
      */
     public function level(User $actor): int
     {
-        if (! $actor->exists) {
-            return 0;
-        }
-
-        $state = TrustState::of($actor);
-
-        return $this->effective($state->level, $state->level_at, $actor->joined_at);
+        return $actor->exists ? $this->effective((int) $actor->getAttribute('trust_level'), $actor->getAttribute('trust_level_at'), $actor->joined_at) : 0;
     }
 
-    /** The same, from a stored level, when they reached it and when they joined. */
-    private function effective(int $level, mixed $levelAt, mixed $joinedAt): int
+    /** The same, from raw columns (for rows read without a model). */
+    public function effective(int $level, mixed $levelAt, mixed $joinedAt): int
     {
         if ($level === 0 && ! $levelAt) {
             $installed = $this->settings->get(Config::INSTALLED);
@@ -66,6 +60,6 @@ class Exempt
 
     public static function silenced(User $actor): bool
     {
-        return $actor->exists && TrustState::of($actor)->silenced_at !== null;
+        return (bool) $actor->getAttribute('trust_silenced_at');
     }
 }

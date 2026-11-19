@@ -43,12 +43,9 @@ class Dashboard
     {
         $counts = array_fill(0, Config::MAX + 1, 0);
 
-        foreach ($this->db->table('trust_states')->groupBy('level')->select('level')->selectRaw('count(*) as n')->get() as $row) {
-            $counts[min(Config::MAX, (int) $row->level)] += (int) $row->n;
+        foreach ($this->db->table('users')->groupBy('trust_level')->select('trust_level')->selectRaw('count(*) as n')->get() as $row) {
+            $counts[min(Config::MAX, (int) $row->trust_level)] += (int) $row->n;
         }
-
-        // Members with no row yet are New.
-        $counts[0] += max(0, $this->db->table('users')->count() - array_sum($counts));
 
         return $counts;
     }
@@ -72,13 +69,12 @@ class Dashboard
         $rows = $this->db->table('trust_stats')
             ->join('users', 'users.id', '=', 'trust_stats.user_id')
             ->whereNotNull('trust_stats.next_level')
-            ->leftJoin('trust_states', 'trust_states.user_id', '=', 'users.id')
-            ->where(fn ($q) => $q->whereNull('trust_states.locked')->orWhere('trust_states.locked', false))
-            ->whereNull('trust_states.silenced_at')
+            ->where('users.trust_locked', false)
+            ->whereNull('users.trust_silenced_at')
             ->orderByDesc('trust_stats.next_percent')
             ->orderByDesc('users.last_seen_at')
             ->limit(10)
-            ->get(['users.id', 'users.username', 'users.avatar_url', 'trust_states.level', 'trust_stats.next_level', 'trust_stats.next_percent', 'trust_stats.data']);
+            ->get(['users.id', 'users.username', 'users.avatar_url', 'users.trust_level', 'trust_stats.next_level', 'trust_stats.next_percent', 'trust_stats.data']);
 
         return $rows->map(function ($r) {
             $next = json_decode((string) $r->data, true)['next'] ?? null;
@@ -87,7 +83,7 @@ class Dashboard
             return [
                 'id' => (int) $r->id,
                 'username' => $r->username,
-                'level' => (int) $r->level,
+                'level' => (int) $r->trust_level,
                 'next' => (int) $r->next_level,
                 'percent' => (int) $r->next_percent,
                 'missing' => array_slice($missing, 0, 2),

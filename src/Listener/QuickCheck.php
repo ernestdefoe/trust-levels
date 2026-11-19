@@ -5,7 +5,6 @@ namespace ErnestDefoe\TrustLevels\Listener;
 use Carbon\Carbon;
 use ErnestDefoe\TrustLevels\Http\RememberActor;
 use ErnestDefoe\TrustLevels\Job\CheckMember;
-use ErnestDefoe\TrustLevels\TrustState;
 use Flarum\Discussion\Event\UserRead;
 use Flarum\Post\Event\Posted;
 use Flarum\User\User;
@@ -44,21 +43,19 @@ class QuickCheck
 
     private function check(User $user): void
     {
-        if ($user->isGuest()) {
+        if ($user->isGuest() || (int) $user->getAttribute('trust_level') > 1 || $user->getAttribute('trust_locked')) {
             return;
         }
 
-        $state = TrustState::of($user);
+        $checked = $user->getAttribute('trust_checked_at');
 
-        if ($state->level > 1 || $state->locked) {
+        if ($checked && Carbon::parse($checked)->addMinutes(self::EVERY_MINUTES)->isFuture()) {
             return;
         }
 
-        if ($state->checked_at && $state->checked_at->copy()->addMinutes(self::EVERY_MINUTES)->isFuture()) {
-            return;
-        }
-
-        TrustState::put($user, ['checked_at' => Carbon::now()]);
+        $now = Carbon::now();
+        User::query()->whereKey($user->id)->update(['trust_checked_at' => $now]);
+        $user->setRawAttributes(['trust_checked_at' => $now] + $user->getAttributes(), true);
 
         $this->queue->push(new CheckMember((int) $user->id));
     }

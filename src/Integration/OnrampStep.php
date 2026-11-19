@@ -4,7 +4,6 @@ namespace ErnestDefoe\TrustLevels\Integration;
 
 use ErnestDefoe\Onramp\StepType\StepType;
 use ErnestDefoe\TrustLevels\Event\LevelChanged;
-use ErnestDefoe\TrustLevels\TrustState;
 use Flarum\User\User;
 
 /**
@@ -30,7 +29,7 @@ class OnrampStep extends StepType
 
     public function progress(User $user, array $config): int
     {
-        return TrustState::of($user)->level;
+        return (int) $user->getAttribute('trust_level');
     }
 
     public function fields(): array

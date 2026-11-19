@@ -68,7 +68,7 @@ Admin → Trust Levels: a dashboard (members per level, who's closest to their n
 
 ## Light on your forum
 
-- One small query per page for a signed-in member (their own level), none for guests, and lists of members cost one query however long they are.
+- No extra queries on any page: a member's level is a column on their account.
 - Reading is counted from the request Flarum already sends as you scroll (one small write), and time spent reading from the gaps between those requests. No timers, no extra requests.
 - Levels are checked by Flarum's scheduler every hour, only for members seen since the last check, a few queries per 200 members. New and Basic members are also checked as they read and post (at most every 10 minutes), so the first promotions work even without cron.
 - Daily rows older than 100 days are folded into totals each night.

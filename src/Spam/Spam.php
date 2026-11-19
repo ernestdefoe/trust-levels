@@ -9,7 +9,6 @@ use ErnestDefoe\TrustLevels\Event\Silenced;
 use ErnestDefoe\TrustLevels\Integration\Extensions;
 use ErnestDefoe\TrustLevels\Integration\NewMemberQueue;
 use ErnestDefoe\TrustLevels\LevelWriter;
-use ErnestDefoe\TrustLevels\TrustState;
 use Flarum\Post\CommentPost;
 use Flarum\Post\Event\Deleting as PostDeleting;
 use Flarum\Post\Event\Hidden;
@@ -66,8 +65,11 @@ class Spam
 
         $flaggers = $this->flaggers($post);
         $min = $this->config->spam('flagger_level');
-        $counted = $flaggers ? User::query()->whereIn('id', $flaggers)->with('trustState')->get()
-            ->filter(fn (User $u) => ! Exempt::silenced($u) && $this->exempt->level($u) >= $min)
+        $counted = $flaggers ? $this->db->table('users')
+            ->whereIn('id', $flaggers)
+            ->whereNull('trust_silenced_at')
+            ->get(['trust_level', 'trust_level_at', 'joined_at'])
+            ->filter(fn ($u) => $this->exempt->effective((int) $u->trust_level, $u->trust_level_at, $u->joined_at) >= $min)
             ->count() : 0;
 
         if ($counted < $needed) {
@@ -112,7 +114,7 @@ class Spam
     {
         $author = $event->post->user;
 
-        if ($author && $event->actor && $event->actor->id !== $author->id && Exempt::silenced($author)
+        if ($author && $event->actor && $event->actor->id !== $author->id && $author->getAttribute('trust_silenced_at')
             && $this->db->table('trust_events')->where('user_id', $author->id)->where('type', 'silenced')->where('post_id', $event->post->id)->exists()) {
             $this->unsilence($author, $event->actor);
         }
@@ -121,7 +123,7 @@ class Spam
     /** Gatehouse approved someone it was holding: an on-hold from their first days ends with it. */
     public function approvedByGatehouse(object $event): void
     {
-        if (Exempt::silenced($event->user)) {
+        if ($event->user->getAttribute('trust_silenced_at')) {
             $this->unsilence($event->user, $event->actor ?? null);
         }
     }
@@ -134,13 +136,13 @@ class Spam
 
     public function silenceFor(User $author, Post $post): void
     {
-        if (Exempt::silenced($author) || $this->exempt->is($author)
+        if ($author->getAttribute('trust_silenced_at') || $this->exempt->is($author)
             || $this->exempt->level($author) > $this->config->spam('silence_up_to')) {
             return;
         }
 
         $now = Carbon::now();
-        TrustState::put($author, ['silenced_at' => $now]);
+        $author->setAttribute('trust_silenced_at', $now)->save();
         $this->writer->log($author->id, 'silenced', null, null, null, $post->id);
 
         $days = $this->config->spam('gatehouse_days');
@@ -157,7 +159,7 @@ class Spam
 
     public function unsilence(User $user, ?User $actor): void
     {
-        TrustState::put($user, ['silenced_at' => null]);
+        $user->setAttribute('trust_silenced_at', null)->save();
         $this->writer->log($user->id, 'unsilenced', null, null, $actor?->id);
     }
 
@@ -175,7 +177,7 @@ class Spam
         $drop = $this->config->spam('drop_flags');
         $level = $this->exempt->level($author);
 
-        if ($drop <= 0 || $level === 0 || TrustState::of($author)->locked) {
+        if ($drop <= 0 || $level === 0 || $author->getAttribute('trust_locked')) {
             return;
         }
 

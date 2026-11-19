@@ -3,11 +3,10 @@
 namespace ErnestDefoe\TrustLevels\Tests\integration\api;
 
 use Carbon\Carbon;
-use ErnestDefoe\TrustLevels\Tests\integration\TrustFixtures;
-use Flarum\Discussion\Discussion;
-use Flarum\Post\Post;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
+use Flarum\Discussion\Discussion;
+use Flarum\Post\Post;
 use Flarum\User\User;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -15,7 +14,6 @@ use PHPUnit\Framework\Attributes\Test;
 class GatehouseTest extends TestCase
 {
     use RetrievesAuthorizedUsers;
-    use TrustFixtures;
 
     protected function setUp(): void
     {
@@ -23,7 +21,7 @@ class GatehouseTest extends TestCase
 
         $this->extension('ernestdefoe-gatehouse', 'ernestdefoe-trust-levels');
 
-        $this->prepareDatabase($this->trustFixtures([
+        $this->prepareDatabase([
             User::class => [
                 ['id' => 3, 'username' => 'held', 'email' => 'held@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level_at' => Carbon::now(), 'trust_silenced_at' => Carbon::now(), 'gatehouse_status' => 'pending'],
                 ['id' => 4, 'username' => 'fresh', 'email' => 'fresh@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level' => 0, 'trust_level_at' => Carbon::now()],
@@ -37,7 +35,7 @@ class GatehouseTest extends TestCase
             Post::class => [
                 ['id' => 1, 'discussion_id' => 1, 'number' => 1, 'user_id' => 4, 'type' => 'comment', 'created_at' => Carbon::now(), 'content' => '<t><p>Buy watches</p></t>'],
             ],
-        ]));
+        ]);
     }
 
     #[Test]
@@ -46,7 +44,7 @@ class GatehouseTest extends TestCase
         $response = $this->send($this->request('POST', '/api/gatehouse/applicants/3/approve', ['authenticatedAs' => 1]));
 
         $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
-        $this->assertNull($this->trustRow(3)->trust_silenced_at);
+        $this->assertNull($this->database()->table('users')->where('id', 3)->value('trust_silenced_at'));
         $this->assertSame(1, $this->database()->table('trust_events')->where('user_id', 3)->where('type', 'unsilenced')->count());
     }
 
@@ -62,6 +60,6 @@ class GatehouseTest extends TestCase
         $this->assertSame('pending', $this->database()->table('users')->where('id', 4)->value('gatehouse_status'));
         $this->assertSame(0, $this->database()->table('access_tokens')->where('user_id', 4)->count());
         $this->assertSame(1, $this->database()->table('trust_events')->where('user_id', 4)->where('type', 'gatehouse')->count());
-        $this->assertNotNull($this->trustRow(4)->trust_silenced_at);
+        $this->assertNotNull($this->database()->table('users')->where('id', 4)->value('trust_silenced_at'));
     }
 }

@@ -33,31 +33,24 @@ class LevelWriter
      */
     public function set(User $user, int $to, string $reason, ?User $actor = null): void
     {
-        $state = TrustState::of($user);
-        $from = $state->level;
+        $from = (int) $user->getAttribute('trust_level');
         $now = Carbon::now();
 
-        if ($from === $to && $state->level_at) {
+        if ($from === $to && $user->getAttribute('trust_level_at')) {
             return;
-        }
-
-        // A member with no row yet gets one at New (as two runs might at once).
-        if (! $state->exists) {
-            TrustState::query()->insertOrIgnore(['user_id' => $user->id]);
         }
 
         // Only from the level we read: when the hourly run and a member's own
         // quick check promote them at the same moment, the second one changes
         // no row and stops here (no second history row, alert or Buzz post).
-        $changed = TrustState::query()->whereKey($user->id)->where('level', $from)
-            ->update(['level' => $to, 'level_at' => $now]);
+        $changed = User::query()->whereKey($user->id)->where('trust_level', $from)
+            ->update(['trust_level' => $to, 'trust_level_at' => $now]);
 
         if (! $changed) {
             return;
         }
 
-        $state->forceFill(['level' => $to, 'level_at' => $now])->syncOriginal();
-        $state->exists = true;
+        $user->setRawAttributes(['trust_level' => $to, 'trust_level_at' => $now] + $user->getAttributes(), true);
 
         if ($from === $to) {
             return;

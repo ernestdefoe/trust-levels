@@ -4,15 +4,14 @@ namespace ErnestDefoe\TrustLevels\Api\Fields;
 
 use ErnestDefoe\TrustLevels\Access\Exempt;
 use ErnestDefoe\TrustLevels\Config;
-use ErnestDefoe\TrustLevels\TrustState;
 use Flarum\Api\Context;
 use Flarum\Api\Schema;
 use Flarum\User\User;
 
 /**
  * Only the member and staff ever see a level: these fields are left out for
- * everyone else, so a level never reaches another member's browser. The
- * rows of every member in a response load in one query (TrustState::of).
+ * everyone else, so a level never reaches another member's browser. All of
+ * them read columns already on the user row: no queries.
  */
 class UserFields
 {
@@ -29,13 +28,13 @@ class UserFields
         return [
             Schema\Integer::make('trustLevel')
                 ->visible($canSee)
-                ->get(fn (User $user) => TrustState::of($user)->level),
+                ->get(fn (User $user) => (int) $user->getAttribute('trust_level')),
             Schema\Boolean::make('trustLocked')
                 ->visible($canSee)
-                ->get(fn (User $user) => TrustState::of($user)->locked),
+                ->get(fn (User $user) => (bool) $user->getAttribute('trust_locked')),
             Schema\Boolean::make('trustSilenced')
                 ->visible($canSee)
-                ->get(fn (User $user) => TrustState::of($user)->silenced_at !== null),
+                ->get(fn (User $user) => (bool) $user->getAttribute('trust_silenced_at')),
             // The composer's live link/image counter: the member's own limits.
             Schema\Arr::make('trustLimits')
                 ->visible(fn (User $user, Context $context) => $context->getActor()->id === $user->id)
@@ -51,7 +50,7 @@ class UserFields
         }
 
         $level = $this->exempt->level($user);
-        $silenced = Exempt::silenced($user);
+        $silenced = (bool) $user->getAttribute('trust_silenced_at');
 
         // Private messages: only this member's own browser hears it (flarum/messages'
         // per-user canSendAnyMessage must stay the same for everyone, see Access\Restrictions).
