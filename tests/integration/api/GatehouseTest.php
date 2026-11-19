@@ -23,7 +23,7 @@ class GatehouseTest extends TestCase
 
         $this->prepareDatabase([
             User::class => [
-                ['id' => 3, 'username' => 'held', 'email' => 'held@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level_at' => Carbon::now(), 'trust_silenced_at' => Carbon::now(), 'gatehouse_status' => 'pending'],
+                ['id' => 3, 'username' => 'held', 'email' => 'held@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level_at' => Carbon::now(), 'trust_silenced_at' => Carbon::now()],
                 ['id' => 4, 'username' => 'fresh', 'email' => 'fresh@machine.local', 'is_email_confirmed' => 1, 'joined_at' => Carbon::now(), 'trust_level' => 0, 'trust_level_at' => Carbon::now()],
             ],
             'access_tokens' => [
@@ -38,10 +38,31 @@ class GatehouseTest extends TestCase
         ]);
     }
 
+    /**
+     * The member's place in Gatehouse's queue, however that Gatehouse keeps it:
+     * its Applicant model (1.5+) or the users column (1.4).
+     */
+    private function gatehouseStatus(int $userId): ?string
+    {
+        if (class_exists('Ernestdefoe\\Gatehouse\\Applicant')) {
+            return \Ernestdefoe\Gatehouse\Applicant::query()->find($userId)?->status;
+        }
+
+        return $this->database()->table('users')->where('id', $userId)->value('gatehouse_status');
+    }
+
     #[Test]
     public function approving_them_in_gatehouse_lifts_the_hold(): void
     {
-        $response = $this->send($this->request('POST', '/api/gatehouse/applicants/3/approve', ['authenticatedAs' => 1]));
+        // Held through Gatehouse's own public hold(), so the queue is Gatehouse's, whichever version.
+        $this->app();
+        $this->app->getContainer()->make(\Ernestdefoe\Gatehouse\Listener\HoldNewMember::class)->hold(User::query()->findOrFail(3), false);
+        $this->assertSame('pending', $this->gatehouseStatus(3));
+
+        // Approved the way that Gatehouse approves: its applicant resource (1.5+) or its decide route (1.4).
+        $response = class_exists('Ernestdefoe\\Gatehouse\\Applicant')
+            ? $this->send($this->request('PATCH', '/api/gatehouse-applicants/3', ['authenticatedAs' => 1, 'json' => ['data' => ['type' => 'gatehouse-applicants', 'id' => '3', 'attributes' => ['status' => 'approved']]]]))
+            : $this->send($this->request('POST', '/api/gatehouse/applicants/3/approve', ['authenticatedAs' => 1]));
 
         $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         $this->assertNull($this->database()->table('users')->where('id', 3)->value('trust_silenced_at'));
@@ -57,7 +78,7 @@ class GatehouseTest extends TestCase
         $container->make(\ErnestDefoe\TrustLevels\Spam\Spam::class)->silenceFor(User::query()->findOrFail(4), Post::query()->findOrFail(1));
 
         // Gatehouse's own hold (its storage, its alerts), and signed out everywhere.
-        $this->assertSame('pending', $this->database()->table('users')->where('id', 4)->value('gatehouse_status'));
+        $this->assertSame('pending', $this->gatehouseStatus(4));
         $this->assertSame(0, $this->database()->table('access_tokens')->where('user_id', 4)->count());
         $this->assertSame(1, $this->database()->table('trust_events')->where('user_id', 4)->where('type', 'gatehouse')->count());
         $this->assertNotNull($this->database()->table('users')->where('id', 4)->value('trust_silenced_at'));
